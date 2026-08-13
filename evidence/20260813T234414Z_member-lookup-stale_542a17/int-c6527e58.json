@@ -1,0 +1,28 @@
+{
+  "id": "int-c6527e58",
+  "reason": "unresolved_element",
+  "capability": "member_lookup_stale",
+  "step_index": 2,
+  "step_action": "click",
+  "question": "step 2 (click) could not find its control",
+  "expected": "text_present='Member Detail'",
+  "observed": "Meridian Core Member Search Reports Administration Meridian Core Member Search Member ID Search",
+  "url": "http://127.0.0.1:8899/",
+  "screenshot": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260813T234414Z_member-lookup-stale_542a17/int-c6527e58-before.png",
+  "checkpoint": {
+    "kind": "text_present",
+    "value": "Member Detail"
+  },
+  "evidence_dir": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260813T234414Z_member-lookup-stale_542a17",
+  "options": [
+    "fix it in the open browser, then resume",
+    "skip this step",
+    "abort",
+    "mark completed by hand"
+  ],
+  "context": {
+    "app": "meridian-core",
+    "variant": "default"
+  },
+  "raised_at": 1786664685.197616
+}

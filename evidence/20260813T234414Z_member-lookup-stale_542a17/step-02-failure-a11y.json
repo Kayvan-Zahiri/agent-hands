@@ -1,0 +1,72 @@
+{
+  "reason": "no strategy resolved the control",
+  "step": 2,
+  "targets": {
+    "candidates": [
+      {
+        "strategy": "role_name",
+        "value": "link \"Submit Query\"",
+        "frame": null,
+        "confidence": 0.95,
+        "note": "unique by role and name across the whole page"
+      },
+      {
+        "strategy": "role_name_in_region",
+        "value": "link \"Submit Query\"",
+        "frame": "content",
+        "confidence": 0.9,
+        "note": "role and name, scoped to frame 'content'"
+      },
+      {
+        "strategy": "nth_of_role",
+        "value": "link[7]",
+        "frame": "content",
+        "confidence": 0.4,
+        "note": "index 0 of 1 link controls in the frame; breaks if the page reorders"
+      },
+      {
+        "strategy": "dom_path",
+        "value": "body > table:nth-of-type(2) > tbody > tr > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > button",
+        "frame": "content",
+        "confidence": 0.2,
+        "note": "structural path; any layout change invalidates it"
+      }
+    ],
+    "rejected": [
+      {
+        "strategy": "labelled_field",
+        "value": "",
+        "frame": null,
+        "confidence": 0.0,
+        "note": "role 'link' is not a form field"
+      },
+      {
+        "strategy": "point",
+        "value": "310,121",
+        "frame": "content",
+        "confidence": 0.05,
+        "note": "viewport coordinates; not resolvable, recorded for human review only"
+      }
+    ]
+  },
+  "frames": [
+    {
+      "url": "http://127.0.0.1:8899/",
+      "name": "",
+      "source": "aria_snapshot:html",
+      "tree": "- document:\n  - iframe\n  - iframe"
+    },
+    {
+      "url": "http://127.0.0.1:8899/nav",
+      "name": "nav",
+      "source": "aria_snapshot:body",
+      "tree": "- table:\n  - rowgroup:\n    - row \"Meridian Core\":\n      - cell \"Meridian Core\"\n- table:\n  - rowgroup:\n    - row \"Member Search Reports Administration\":\n      - cell \"Member Search Reports Administration\":\n        - link \"Member Search\":\n          - /url: /members/search\n        - link \"Reports\":\n          - /url: /reports\n        - link \"Administration\":\n          - /url: /admin"
+    },
+    {
+      "url": "http://127.0.0.1:8899/members/search",
+      "name": "content",
+      "source": "aria_snapshot:body",
+      "tree": "- table:\n  - rowgroup:\n    - row \"Meridian Core\":\n      - cell \"Meridian Core\"\n- table:\n  - rowgroup:\n    - row \"Member Search Member ID [REDACTED:ACCOUNT] Search\":\n      - cell \"Member Search Member ID [REDACTED:ACCOUNT] Search\":\n        - text: Member Search\n        - table:\n          - rowgroup:\n            - row \"Member ID [REDACTED:ACCOUNT]\":\n              - cell \"Member ID\"\n              - cell \"12345\":\n                - textbox: \"12345\"\n            - row \"Search\":\n              - cell\n              - cell \"Search\":\n                - link \"Search\":\n                  - /url: \"#\""
+    }
+  ]
+}

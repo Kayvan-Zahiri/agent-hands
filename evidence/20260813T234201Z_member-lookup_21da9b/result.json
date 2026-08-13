@@ -1,0 +1,13 @@
+{
+  "outcome": "business_outcome",
+  "capability": "member_lookup",
+  "outputs": {},
+  "business_code": "member_not_found",
+  "message": "no member exists with that identifier",
+  "failed_step": null,
+  "expected": null,
+  "observed": null,
+  "recovered": [],
+  "evidence_dir": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260813T234201Z_member-lookup_21da9b",
+  "escalated": false
+}

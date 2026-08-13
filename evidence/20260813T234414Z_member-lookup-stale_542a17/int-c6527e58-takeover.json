@@ -1,0 +1,10 @@
+{
+  "request_id": "int-c6527e58",
+  "decision": "abort",
+  "url_before": "http://127.0.0.1:8899/",
+  "url_after": "http://127.0.0.1:8899/",
+  "page_moved": false,
+  "note": "no operator available",
+  "seconds": 0.0,
+  "screenshot_after": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260813T234414Z_member-lookup-stale_542a17/int-c6527e58-after.png"
+}
