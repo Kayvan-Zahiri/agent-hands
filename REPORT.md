@@ -102,7 +102,8 @@ session re-entry, three flow re-entries. Each is written to the evidence log,
 because silent recovery is how a system degrades for months unnoticed.
 
 The full behaviour. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 16/16 passing:
+fixture and asserts the outcome of each, 16/16 passing, alongside 70 unit tests
+covering perception, policy and escalation:
 
 | case | outcome | note |
 |---|---|---|
@@ -287,6 +288,10 @@ Deliberately not built, in rough order of how much they would matter:
   against the recorded input would be a cheap, high-value addition.
 - **Concurrency.** One session, one run. No pooling, no locking across runs
   against the same record.
+- **A live discovery run.** The loop is verified end to end against a scripted
+  client, so rendering, control resolution, policy gating and parameterisation
+  are proven. The `messages.create` call itself has not run, for want of a
+  credential on the build machine. This is the one gap I would close first.
 
 ### On the fixture
 

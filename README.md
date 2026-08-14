@@ -119,13 +119,26 @@ failures are a disagreement between the two.
 
 ## Tests
 
+86 in total, all against the real fixture with a real browser. No mocked pages:
+every bug worth finding here was a disagreement between what the code assumed a
+page would do and what it did.
+
 ```bash
+# 70 unit tests: perception (needs the fixture up), policy, escalation
+PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
+
+# 16 end-to-end behaviours; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
-Drives the engine against the live fixture and asserts the outcome of 16 cases:
-success, both business outcomes, three recoverable conditions, three hard
-failures, strategy degradation vs a genuinely stale recording, and four policy
-refusals. It starts the fixture itself if one is not already running.
+| suite | covers |
+|---|---|
+| `test_perception.py` | frame crossing, the unnamed field, caption-not-id targeting, ambiguity demotion, `POINT` never offered, the second tenant |
+| `test_policy_escalation.py` | surface/action/risk gates, redaction, ownership transitions, resume re-verification |
+| `test_replay.py` | the three outcomes, recovery, degradation vs staleness, policy refusals |
+
+The one to read is `test_replay.py`. It asserts *which* of the three outcomes
+came back, not just that the run completed, and every real bug in this project
+was a classification bug that only that catches.
 
 See `REPORT.md` for the design argument and what was deliberately left out.
