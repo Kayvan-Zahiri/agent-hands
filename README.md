@@ -92,9 +92,15 @@ Failure modes are switchable so replay can be driven into each branch:
 ?fail=denied       permission denied           (a hard failure)
 ?fail=timeout      session expired             (escalates; credentials are never handled)
 ?fail=slow         a 3 second stall            (recoverable)
-?fail=dialog       an interstitial             (recoverable)
+?fail=dialog       an interstitial that resumes the request      (recoverable)
+?fail=dialog_lossy an interstitial that discards it             (recoverable, but
+                                                only by re-entering the flow)
 ?fail=error        an unhandled app error      (a hard failure)
 ```
+
+The two interstitials are separate modes because they need opposite recoveries.
+One can be dismissed and the step continued; the other has taken the typed input
+with it, so continuing would submit an empty form.
 
 A second tenant runs the same vendor product with a different brand, a different
 field caption and a different route:
