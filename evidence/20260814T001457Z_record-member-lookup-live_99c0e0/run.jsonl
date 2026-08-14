@@ -1,0 +1,1 @@
+{"ts": "2026-08-14T00:14:57.861+00:00", "elapsed_ms": 0, "event": "run_started", "capability": "record-member_lookup_live", "params": {"goal": "Look up member [REDACTED:ACCOUNT] and open their detail screen", "url": "http://127.0.0.1:8899/"}}

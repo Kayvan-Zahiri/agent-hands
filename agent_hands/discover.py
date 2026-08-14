@@ -206,14 +206,22 @@ def discover(
     narration: list[str] = []
 
     for turn in range(1, max_turns + 1):
-        response = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=SYSTEM,
-            thinking={"type": "adaptive"},
-            tools=TOOLS,
-            messages=messages,
-        )
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=SYSTEM,
+                thinking={"type": "adaptive"},
+                tools=TOOLS,
+                messages=messages,
+            )
+        except Exception as exc:
+            # Credential and quota problems are the operator's to fix and have
+            # nothing to do with the application being automated. Converting
+            # them here keeps a stack trace out of the terminal for a condition
+            # whose entire remedy is "use a different key", and keeps the
+            # browser teardown in the caller's `finally` on the normal path.
+            raise DiscoveryError(_explain(exc)) from exc
 
         # A refusal is a legitimate answer, not an exception. It usually means
         # the goal asked for something the safeguards decline; surfacing it as a
@@ -444,6 +452,35 @@ def _result(call_id: str, content: str, *, is_error: bool = False) -> dict[str, 
     if is_error:
         block["is_error"] = True
     return block
+
+
+def _explain(exc: Exception) -> str:
+    """Turn an SDK exception into something an operator can act on.
+
+    Matched on the SDK's typed exception classes rather than on message text,
+    which changes. The import is local because replay must never pull in the
+    Anthropic package, and this module is only reached at record time.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return f"model call failed: {type(exc).__name__}: {exc}"
+
+    if isinstance(exc, anthropic.AuthenticationError):
+        return ("the Anthropic API key was rejected (401). check ANTHROPIC_API_KEY, "
+                "or the .env file this was started with. replay does not need a key; "
+                "only recording does")
+    if isinstance(exc, anthropic.PermissionDeniedError):
+        return "the API key is valid but not permitted to use this model (403)"
+    if isinstance(exc, anthropic.RateLimitError):
+        return "rate limited (429). wait and re-run the recording"
+    if isinstance(exc, anthropic.NotFoundError):
+        return f"model {MODEL!r} was not found (404); check the model id"
+    if isinstance(exc, anthropic.APIConnectionError):
+        return f"could not reach the Anthropic API: {exc}"
+    if isinstance(exc, anthropic.APIStatusError):
+        return f"model call failed with {exc.status_code}: {exc.message}"
+    return f"model call failed: {type(exc).__name__}: {exc}"
 
 
 def _client() -> Any:
