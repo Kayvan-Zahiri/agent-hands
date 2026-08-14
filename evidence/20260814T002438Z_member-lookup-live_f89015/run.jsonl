@@ -1,0 +1,2 @@
+{"ts": "2026-08-14T00:24:38.704+00:00", "elapsed_ms": 0, "event": "run_started", "capability": "member_lookup_live", "params": {"member_id": "[REDACTED]"}}
+{"ts": "2026-08-14T00:24:38.705+00:00", "elapsed_ms": 0, "event": "run_finished", "outcome": "failure", "artifacts": []}

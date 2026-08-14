@@ -21,6 +21,20 @@ replay (many, unattended, no model)  ------------------------->
 The split is the design. Everything expensive and non-deterministic happens once
 and gets reviewed; everything repeated is a fixed list of steps someone signed.
 
+Recorded live against the fixture with Claude Opus 5, this took 3 turns and two
+actions. The artifact it produced replays on members the model never saw:
+
+```
+member_id=12345 (recorded with)  success
+member_id=22887 (never seen)     success
+member_id=30021 (never seen)     success
+```
+
+The model chose *control 3* from a numbered list of accessibility nodes; the
+`labelled_field 'Member ID'` strategy that ended up in the artifact was derived
+by the recorder. Neither half would be much use alone: the model knows which
+control it wants, and the perception layer knows how to keep finding it.
+
 Two consequences worth stating, because they are what make it work:
 
 **The model never sees HTML.** It receives the accessibility view: roles, names,
@@ -302,10 +316,13 @@ Deliberately not built, in rough order of how much they would matter:
   against the recorded input would be a cheap, high-value addition.
 - **Concurrency.** One session, one run. No pooling, no locking across runs
   against the same record.
-- **A live discovery run.** The loop is verified end to end against a scripted
-  client, so rendering, control resolution, policy gating and parameterisation
-  are proven. The `messages.create` call itself has not run, for want of a
-  credential on the build machine. This is the one gap I would close first.
+- **Discovery explores one path.** The live run records the successful route and
+  stops. It does not probe the not-found or validation branches, so the business
+  rules that distinguish an answer from a fault are still authored by the
+  reviewer. That gap is visible in `evidence/README.md`: the recorded artifact
+  misclassified an unknown member as a failure until two rules were added by
+  hand. Having the agent deliberately try one bad input during recording would
+  close it, and is the first thing I would add.
 
 ### On the fixture
 

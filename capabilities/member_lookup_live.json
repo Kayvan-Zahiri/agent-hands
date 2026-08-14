@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.0",
+  "artifact_version": 2,
+  "name": "member_lookup_live",
+  "description": "Look up member {member_id} and open their detail screen",
+  "app_id": "meridian-core",
+  "app_variant": null,
+  "entry_url": "http://127.0.0.1:8899/",
+  "approved": true,
+  "recorded_by": "discovery-agent",
+  "recorded_at": "2026-08-14T00:23:21+00:00",
+  "params": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "required": true,
+      "description": "Recorded from the goal; used in step[1].text.",
+      "example": "12345"
+    }
+  ],
+  "outputs": [],
+  "business_rules": [
+    {
+      "code": "member_not_found",
+      "when_text": "No member found",
+      "message": "no member exists with that identifier",
+      "terminal": true
+    },
+    {
+      "code": "invalid_identifier",
+      "when_text": "must be 5 digits",
+      "message": "the identifier failed the application's validation",
+      "terminal": true
+    }
+  ],
+  "steps": [
+    {
+      "index": 0,
+      "action": "navigate",
+      "target": null,
+      "text": null,
+      "url": "http://127.0.0.1:8899/",
+      "risk": "safe",
+      "checkpoint": null,
+      "extracts": null,
+      "note": "entry point"
+    },
+    {
+      "index": 1,
+      "action": "type",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "labelled_field",
+            "value": "Member ID",
+            "frame": "content",
+            "confidence": 0.85,
+            "note": "caption cell left of the field in the layout table"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "textbox[0]",
+            "frame": "content",
+            "confidence": 0.4,
+            "note": "index 0 of 1 textbox controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table:nth-of-type(2) > tbody > tr > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
+            "frame": "content",
+            "confidence": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "role_name",
+            "value": "",
+            "frame": null,
+            "confidence": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "",
+            "frame": null,
+            "confidence": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "point",
+            "value": "346,96",
+            "frame": "content",
+            "confidence": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": "{member_id}",
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": "Enter the member ID into the search field"
+    },
+    {
+      "index": 2,
+      "action": "click",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "link \"Search\"",
+            "frame": null,
+            "confidence": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "link \"Search\"",
+            "frame": "content",
+            "confidence": 0.9,
+            "note": "role and name, scoped to frame 'content'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "link[0]",
+            "frame": "content",
+            "confidence": 0.4,
+            "note": "index 0 of 1 link controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table:nth-of-type(2) > tbody > tr > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > a",
+            "frame": "content",
+            "confidence": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "confidence": 0.0,
+            "note": "role 'link' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "310,121",
+            "frame": "content",
+            "confidence": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": null,
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": {
+        "kind": "text_present",
+        "value": "Member Detail"
+      },
+      "extracts": null,
+      "note": "Submit the member search"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "outcome": "failure",
+  "capability": "member_lookup_live",
+  "outputs": {},
+  "business_code": null,
+  "message": "refused before starting",
+  "failed_step": null,
+  "expected": "policy[artifact]",
+  "observed": "capability 'member_lookup_live' v2 is a draft; a recorded flow must be reviewed before it can be replayed",
+  "recovered": [],
+  "evidence_dir": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260814T002438Z_member-lookup-live_f89015",
+  "escalated": true
+}

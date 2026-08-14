@@ -1,0 +1,13 @@
+{
+  "outcome": "success",
+  "capability": "member_lookup_live",
+  "outputs": {},
+  "business_code": null,
+  "message": "flow completed",
+  "failed_step": null,
+  "expected": null,
+  "observed": null,
+  "recovered": [],
+  "evidence_dir": "/Users/kayvan/Desktop/jobs/projects/agent-hands/evidence/20260814T002347Z_member-lookup-live_4ca880",
+  "escalated": false
+}
