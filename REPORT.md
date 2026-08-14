@@ -45,21 +45,35 @@ of steps. The two decisions that matter:
 control could have been identified, ordered by expected survival, together with
 the ones that were *rejected and why*. Replay walks the list.
 
+Verbatim from the committed artifact, for the search field:
+
 ```
 1. type [reversible] {member_id}
-      -> labelled_field   'Member ID'    (0.85)  caption cell left of the field
-         nth_of_role      'textbox[0]'   (0.40)  breaks if the page reorders
-         dom_path         'body > table:nth-of-type(2) > ...' (0.20)
-       x role_name        ''             control has no accessible name
-       x dom_path         '#ctl00_r3_c1' id looks server-generated
-       x point            '346,96'       recorded for review only, never replayed
+      -> labelled_field       'Member ID'   (0.85)  caption cell left of the field
+         nth_of_role          'textbox[0]'  (0.40)  index 0 of 1; breaks if the page reorders
+         dom_path             'body > table:nth-of-type(2) > ...' (0.20)
+       x role_name            ''            control has no accessible name
+       x role_name_in_region  ''            control has no accessible name
+       x point                '346,96'      recorded for review only, never replayed
 ```
 
 The rejections are in the artifact on purpose. "Why is this matching by
 position?" is the first question a reviewer asks, and the answer, that the
 control has no accessible name, is a fact about the application rather than a
-shortcut the recorder took. The server-generated id is recorded as *declined*,
-not used: it would pass today and fail silently next release.
+shortcut the recorder took.
+
+Note what is *absent*. The field has a perfectly good-looking id, `ctl00_r3_c1`,
+and it is not in the artifact at all, in either list. It is exactly the selector
+a recorder is most tempted by and would pass today, because ASP.NET-era ids like
+that are regenerated per render. `grep ctl00 capabilities/*.json` returns
+nothing, and `test_perception.py` asserts it.
+
+Every candidate is verified against the live page before it is recorded: it must
+match exactly one element, and that element must be the node being recorded, by
+identity rather than by count. A strategy that matched nothing, matched several,
+or matched the wrong thing is demoted to `rejected` with the count that
+disqualified it. Recording an unverified fallback is worse than recording none,
+because replay will take it and act on the wrong control with full confidence.
 
 **A result is a three-way tagged union, not an exception.**
 
