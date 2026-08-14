@@ -28,8 +28,17 @@ into each branch deterministically:
     ?fail=denied       permission denied          (a hard failure)
     ?fail=timeout      session expired, re-login  (recoverable)
     ?fail=slow         a 3 second stall           (recoverable)
-    ?fail=dialog       an interstitial appears    (recoverable)
+    ?fail=dialog       an interstitial appears    (recoverable, resumes the request)
+    ?fail=dialog_lossy the same, but "Continue" drops the request and lands you
+                       back at an empty form      (recoverable, but only by
+                       re-entering: whatever was typed is gone)
     ?fail=error        an unhandled app error     (a hard failure)
+
+The two interstitials are separate modes because they need opposite recoveries,
+and that is the interesting distinction. A notice that merely covers the screen
+can be dismissed and the step continued. A notice that discards the request has
+taken the typed input with it, so continuing the step would submit an empty form
+and blame the checkpoint for the result; the flow has to be re-entered.
 
 Run it with:  python -m fixture.app  [--port 8899] [--variant westfield]
 """
@@ -68,6 +77,12 @@ MEMBERS = {
 
 CFG = VARIANTS["default"]
 
+# Modes that fire once and then let the request through, like a real one-time
+# notice. Without this a recovery can never be shown to have worked: the flow
+# re-enters, meets the same notice, and correctly gives up.
+ONE_SHOT = {"dialog_lossy"}
+_fired: set[str] = set()
+
 
 def _page(body: str, title: str) -> bytes:
     # No viewport tag, no semantic landmarks, a table wrapper. On purpose.
@@ -99,14 +114,18 @@ def _nav() -> bytes:
 </font></td></tr></table>""", "nav")
 
 
-def _search_form(message: str = "") -> bytes:
+def _search_form(message: str = "", fail: str = "") -> bytes:
     # The caption is a sibling <td>. There is no <label for=...>, and the id is
     # server-generated noise, so the field can only be found by its caption.
     msg = f'<tr><td colspan="2"><font face="Verdana" size="2" color="#a00000">{message}</font></td></tr>' if message else ""
+    # The switch rides through the submission so a failure mode can fire in the
+    # middle of a multi-step flow, not just on the first request.
+    hidden = f'<input type="hidden" name="fail" value="{fail}">' if fail else ""
     return _page(f"""
 <table cellpadding="6" cellspacing="0" border="0" width="100%"><tr><td>
 <font face="Verdana" size="2"><b>Member Search</b></font><br><br>
 <form action="{CFG['search_path']}" method="get">
+{hidden}
 <table cellpadding="3" cellspacing="0" border="0">
   {msg}
   <tr>
@@ -193,6 +212,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if path == "/":
             return self._send(_frameset())
+        if path == "/reset":
+            _fired.clear()
+            return self._send(_page('<font face="Verdana" size="2">reset</font>', "reset"))
         if path == "/nav":
             return self._send(_nav())
         if path == "/dialog":
@@ -201,9 +223,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == CFG["search_path"]:
             member_id = (q.get("member_id") or [""])[0]
             if not member_id:
-                return self._send(_search_form())
+                return self._send(_search_form(fail=fail))
             if fail == "dialog":
                 return self._send(_dialog(_resume_query(q)))
+            if fail == "dialog_lossy" and fail not in _fired:
+                _fired.add(fail)
+                # "Continue" goes back to a bare search form, so the member id
+                # typed before the interruption is gone.
+                return self._send(_dialog(""))
             if fail in ("denied", "timeout", "error"):
                 return self._send(_notice(fail))
             if fail == "validation" or (member_id and not member_id.isdigit()):

@@ -101,22 +101,35 @@ Recovery is bounded and named, never generic retry: three attempts per step, one
 session re-entry, three flow re-entries. Each is written to the evidence log,
 because silent recovery is how a system degrades for months unnoticed.
 
-The full behaviour, all verified against the fixture:
+The full behaviour. `tests/test_replay.py` drives the engine against the live
+fixture and asserts the outcome of each, 16/16 passing:
 
 | case | outcome | note |
 |---|---|---|
 | valid member | success | |
 | unknown member | business_outcome | `member_not_found` |
 | non-numeric input | business_outcome | `invalid_identifier` |
-| interstitial | success | dismissed, one recovery recorded |
+| interstitial, resumes the request | success | dismissed, step continued |
+| interstitial, discards the request | success | dismissed, whole flow re-entered |
 | 3s stall | success | widened timeout, recovery recorded |
 | session expired | failure | re-entered once, then escalated |
 | permission denied | failure | no retry; entitlements are a person's job |
 | application error | failure | retried once, then failed |
+| primary strategy missed | success | resolved on a fallback, degradation recorded |
+| every strategy missed | failure | `unresolved control`, evidence captured |
 | host not allowlisted | failure | refused before the browser opened |
 | unapproved draft | failure | refused |
 | read-only lane vs a write step | failure | refused |
 | mistyped parameter | raises | caller's bug, not a replay outcome |
+
+The two interstitials are separate cases because they need opposite recoveries,
+and getting that wrong is silent. A notice that merely covers the screen can be
+dismissed and the step continued. A notice that *discards* the request has taken
+the typed input with it, so continuing the step would submit an empty form and
+then blame the checkpoint; that one has to re-enter the flow. The engine decides
+between them by asking whether the step's checkpoint already holds after the
+dismissal, and `_dismiss` confirms the notice actually went away rather than
+assuming the click worked.
 
 One bug this surfaced, worth recording because it is a correctness issue rather
 than a tidiness one. After a recovery, the engine originally re-ran the step's
@@ -149,12 +162,30 @@ The recorded primary strategy missed, because their caption is different, and
 the fallback caught it. The `result.json` says `success`, and **only the
 evidence file shows the degradation**.
 
-That cuts both ways and I want to be honest about it. A run that passes on a
-0.4-confidence fallback is one release away from not passing. The right
-operational answer is to alert on strategy degradation, not just on failure, and
-that alerting is not built here. The artifact carries `app_id` and `app_variant`
-so a variant can override individual targets rather than forcing a re-record per
-tenant, but the override merge is not implemented either.
+A run that passes on a 0.4-confidence fallback is one release away from not
+passing, so degradation is surfaced rather than left implicit: `Resolution`
+exposes `degraded`, the step's evidence line carries `degraded_to_rank`, and
+resolving below the primary logs a warning naming both strategies.
+
+```
+target degraded to nth_of_role ('link[0]'); primary was role_name
+```
+
+What is *not* built is anything that aggregates that across runs: a threshold, a
+dashboard, a ticket when a capability has been limping for a week. The signal
+exists at the point of failure-to-be; nothing yet acts on it.
+
+The suite asserts both halves of this, because only asserting one is how the
+distinction rots:
+
+| case | expected |
+|---|---|
+| primary strategy missed, fallbacks intact | success, degraded |
+| every strategy missed | failure, `unresolved control` |
+
+The artifact carries `app_id` and `app_variant` so a variant can override
+individual targets rather than forcing a re-record per tenant, but the override
+merge is not implemented.
 
 ## Escalation & handoff
 
@@ -240,8 +271,10 @@ Deliberately not built, in rough order of how much they would matter:
   ownership machine, the packet, the re-verification, is real. In a deployment
   the console is a queue, a review UI, an authenticated operator and a shared
   browser session. `OperatorConsole` is the seam; nothing above it changes.
-- **Degradation alerting.** The evidence records that a run passed on a fallback.
-  Nothing watches for it, which is the gap the multi-tenant result exposes.
+- **Degradation aggregation.** A run that passes on a fallback is detected,
+  recorded in the evidence and logged. Nothing rolls that up across runs to
+  notice a capability has been limping for a week, which is where it would
+  actually get acted on.
 - **Variant target overrides.** The schema carries `app_variant`; the merge that
   would let one artifact carry per-tenant target overrides is not written.
 - **Native desktop.** The accessibility abstraction was chosen partly because

@@ -111,4 +111,15 @@ failure a screenshot paired with the accessibility snapshot. The screenshot is
 what a person sees; the snapshot is what the targeting layer saw. Most confusing
 failures are a disagreement between the two.
 
+## Tests
+
+```bash
+PYTHONPATH=. .venv/bin/python tests/test_replay.py
+```
+
+Drives the engine against the live fixture and asserts the outcome of 16 cases:
+success, both business outcomes, three recoverable conditions, three hard
+failures, strategy degradation vs a genuinely stale recording, and four policy
+refusals. It starts the fixture itself if one is not already running.
+
 See `REPORT.md` for the design argument and what was deliberately left out.

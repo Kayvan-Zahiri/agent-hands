@@ -520,16 +520,23 @@ class Replay:
         action, because the action is usually what replaced it.
         """
         frame = frame_for(self.page, step)
-        needles = [c.when_text for c in CONDITIONS]
-        needles += [b.when_text for b in cap.business_rules]
-        if step.checkpoint and step.checkpoint.kind == "text_present":
-            needles.append(step.checkpoint.value)
-        try:
-            self._patiently(step.index, "the page",
-                            lambda ms: _wait_for_any_text(frame, needles, ms))
-        except PlaywrightTimeout:
-            pass          # nothing recognised arrived; the checkpoint is the verdict
+        if step.checkpoint is not None:
+            needles = [c.when_text for c in CONDITIONS]
+            needles += [b.when_text for b in cap.business_rules]
+            if step.checkpoint.kind == "text_present":
+                needles.append(step.checkpoint.value)
+            try:
+                self._patiently(step.index, "the page",
+                                lambda ms: _wait_for_any_text(frame, needles, ms))
+            except PlaywrightTimeout:
+                pass      # nothing recognised arrived; the checkpoint is the verdict
 
+        # A step with no checkpoint is the recording saying there is nothing to
+        # arrive at -- typing into a field, reading a cell. Waiting for a state
+        # nobody expects would spend the whole budget on every such step and
+        # find nothing, so the page is classified as it stands. A condition that
+        # is genuinely on screen is still caught; one that has not rendered yet
+        # is caught by the next step, which does have something to wait for.
         text = frame_text(frame)
 
         condition = _condition(text)
@@ -610,19 +617,22 @@ class Replay:
                 raise _Abort("interstitial kept reappearing",
                              f"the notice to stay dismissed after {MAX_DISMISSALS} attempts",
                              _excerpt(frame_text(frame)))
-            detail = self._dismiss(frame)
+            detail = self._dismiss(frame, condition, step)
             if detail is None:
                 raise _Abort("interstitial could not be dismissed", _expected(step),
                              _excerpt(frame_text(frame)))
             self._dismissals[step.index] = self._dismissals.get(step.index, 0) + 1
             self._note(step.index, condition.code, detail)
-            # Retry the step, not the flow. An interstitial interrupts the work
-            # in place, so dismissing it usually lands on the screen the step was
-            # already heading for -- whereas re-entering would load the entry URL
-            # again and, if that URL is what raised the interstitial, meet it
-            # again. Session expiry is the case that genuinely needs re-entry,
-            # and it is handled below.
-            return _RETRY
+            # Where dismissing leaves you decides what to do next. If the notice
+            # was covering the screen the step was heading for, the step is
+            # already done and repeating the action would be a second write for
+            # nothing. If it bounced back to the start, then anything typed
+            # before the interruption is gone with it, and only re-entering the
+            # flow puts it back -- retrying the step alone would submit a form
+            # that is now empty and blame the checkpoint for the result.
+            if self._already_there(step):
+                return _RETRY
+            return _Reenter(condition.code, "dismissed an interstitial")
 
         # Re-entry means loading the entry URL again. This system never handles
         # credentials, so if the application still wants a login after that, it
@@ -726,18 +736,33 @@ class Replay:
         self._event("re_resolving", index=step.index, action=step.action.value)
         return True
 
-    def _dismiss(self, frame: Any) -> str | None:
-        """Click an interstitial's acknowledgement, whatever it is called."""
+    def _dismiss(self, frame: Any, condition: Condition, step: Step) -> str | None:
+        """Click an interstitial's acknowledgement and confirm it actually went.
+
+        The confirmation is the whole point. A dismissal that is assumed rather
+        than checked is how a run records a recovery it did not make, carries on
+        against a notice still on screen, and then reports the next control it
+        cannot find as the fault -- sending someone to fix a control that was
+        never broken.
+        """
         for wanted in _DISMISS:
             for role in ("link", "button"):
                 try:
                     control = frame.get_by_role(role, name=wanted, exact=True)
                     if not control.count():
                         continue
-                    control.first.click(timeout=STEP_TIMEOUT_MS)
-                    return f"clicked {role} {wanted!r}"
+                    control.first.click(timeout=SLOW_TIMEOUT_MS)
                 except (PlaywrightTimeout, PlaywrightError):
                     continue
+                # Re-resolved, because acknowledging a notice usually navigates
+                # and the frame that held it may be a different document now.
+                after = frame_for(self.page, step)
+                try:
+                    after.get_by_text(condition.when_text).first.wait_for(
+                        state="hidden", timeout=STEP_TIMEOUT_MS)
+                except (PlaywrightTimeout, PlaywrightError):
+                    return None          # clicked, but the notice is still there
+                return f"clicked {role} {wanted!r}"
         return None
 
     def _note(self, index: int, tactic: str, detail: str) -> None:
