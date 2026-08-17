@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .escalation import Escalator, OperatorConsole, ScriptedConsole
+from .escalation import ConsoleOwner, Escalator, ScriptedConsole
 from .evidence import Evidence
 from .policy import AppAllowance, Policy
 from .recorder import load, save
@@ -68,7 +68,7 @@ def _console(unattended: bool) -> Any:
     if unattended:
         return ScriptedConsole(decision=Decision.ABORT, note="no operator available",
                                approves=False)
-    return OperatorConsole()
+    return ConsoleOwner()
 
 
 # --------------------------------------------------------------------------
