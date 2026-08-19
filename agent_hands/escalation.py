@@ -1,11 +1,8 @@
 """Handing a live session to a person, and taking it back safely.
 
-Escalation is usually treated as the error path. It is not. It is the normal path
-for the long tail, and how well it works decides whether anyone trusts the system
-with the other ninety per cent.
-
-What is real here, and what is mocked, because it is the first thing a reviewer
-will want to know:
+Escalation is the normal path for the long tail, and how well it works decides
+whether anyone trusts the system with the other ninety percent. A reviewer will
+ask first what is real here and what is mocked:
 
 **Real.** The ownership state machine and its refusals. The intervention packet
 and the evidence written with it, all of it through `policy.redact`. The handoff
@@ -13,29 +10,29 @@ of the *same* Page object rather than a fresh browser. The capture of what the
 operator did. The checkpoint re-verification on resume.
 
 **Mocked.** The console, and only the console. `ConsoleOwner` prints to a
-terminal and blocks on stdin. In a real deployment that is a queue, a review UI,
-an authenticated operator and an attributable audit trail, and the operator
-drives the browser through a shared session rather than by reading a screenshot.
-`OperatorConsole` is the seam where that gets swapped in; nothing above it
-changes when it does, which is why the interface is this small.
+terminal and blocks on stdin. A real deployment has a queue, a review UI, an
+authenticated operator, an attributable audit trail, and a shared session the
+operator drives directly instead of reading a screenshot. All of that swaps in at
+`OperatorConsole`, and nothing above it changes, which is why the interface is
+this small.
 
 Three properties the design is arranged around:
 
 **The session is not thrown away.** The expensive part of a back-office task is
 the state: logged in, the right member open, three screens deep. An escalation
 that ends the session makes the person redo all of it, so they stop escalating
-and start doing the whole task by hand. Here the browser stays exactly where it
-is and the person is handed the same window.
+and do the whole task by hand. Here the browser stays where it is and the person
+gets the same window.
 
 **The handoff carries what the automation knew.** "Something went wrong" costs
-the reviewer the entire investigation. The packet carries the capability, the
-step, what was expected, what was on screen, the URL and a screenshot, so the
-first thing they see is a diagnosis rather than a blank terminal.
+the reviewer the whole investigation. The packet carries the capability, the
+step, what was expected, what was on screen, the URL and a screenshot, so they
+open with a diagnosis instead of a blank terminal.
 
-**Exactly one writer at a time.** If replay keeps running while a person is
-fixing the page, two writers race on one session and the evidence stops
-describing what happened. So ownership is explicit, transitions are legal or they
-raise, and acting out of turn raises rather than logs.
+**Exactly one writer at a time.** If replay keeps running while a person fixes
+the page, two writers race on one session and the evidence stops describing what
+happened. So ownership is explicit, transitions are legal or they raise, and
+acting out of turn raises rather than logs.
 """
 
 from __future__ import annotations
@@ -60,8 +57,8 @@ from .schema import Capability, Checkpoint, Step
 class PageLike(Protocol):
     """The slice of playwright's sync `Page` this module needs.
 
-    Narrow on purpose: it keeps the handoff testable without a browser, and it
-    documents exactly how much power giving a page away actually requires.
+    Narrow on purpose: the handoff stays testable without a browser, and it shows
+    exactly how much power handing a page over requires.
     """
 
     @property
@@ -85,9 +82,9 @@ class TransitionError(RuntimeError):
 class Owner(str, enum.Enum):
     AUTOMATION = "automation"
     OPERATOR = "operator"
-    # A distinct state, not a flavour of AUTOMATION: between the handback and a
-    # verified checkpoint, nobody may act, because neither party yet knows where
-    # the page is. RESUMING is the window in which that gets established.
+    # Between the handback and a verified checkpoint, neither party knows where
+    # the page is, so nobody may act. RESUMING is that window, which is why it
+    # gets its own state instead of counting as AUTOMATION.
     RESUMING = "resuming"
 
 
@@ -121,7 +118,7 @@ class SessionOwner:
         self._transition(Owner.AUTOMATION, why)
 
     def guard(self, actor: Owner) -> None:
-        """Call before every write. The one line that makes ownership real."""
+        """Call before every write. Without this, ownership is only a convention."""
         if actor is not self.state:
             raise OwnershipError(
                 f"{actor.value} tried to act while the session is owned by {self.state.value}")
@@ -133,10 +130,9 @@ class SessionOwner:
 class OwnedPage:
     """A page that refuses every call unless its holder is the current owner.
 
-    Convention would do here, and convention is what fails at 3am. The wrapper is
-    handed to whichever party has control, so a stale reference held by the
-    automation raises instead of quietly typing into a screen a person is halfway
-    through fixing.
+    Each party gets its own wrapper, so a stale reference held by the automation
+    raises instead of quietly typing into a screen a person is halfway through
+    fixing. Convention alone would let that failure happen silently.
     """
 
     def __init__(self, page: PageLike, actor: Owner, owner: SessionOwner) -> None:
@@ -193,10 +189,9 @@ class Response:
 class InterventionRequest:
     """The packet a person receives. Written to be read under time pressure.
 
-    A request that says only "step 4 failed" costs a round trip to the scarcest
-    resource in the system, so this carries the capability, the step and its
-    checkpoint, what was expected against what was seen, where the page actually
-    is, and a picture of it.
+    A packet saying only "step 4 failed" costs a round trip to the scarcest
+    resource in the system, the person reading it. So this carries the capability,
+    the step and its checkpoint, expected against seen, the URL, and a screenshot.
     """
 
     id: str
@@ -256,8 +251,8 @@ class InterventionRequest:
         }
 
 
-# The packet is the same object whether it is raised by replay or by a takeover;
-# both names read correctly at their own call sites.
+# Same object whether replay raises it or a takeover does; both names read
+# correctly at their own call sites.
 Handoff = InterventionRequest
 
 
@@ -275,9 +270,9 @@ def raise_intervention(
     """Stop, capture the scene, and write the request down.
 
     The URL and every free-text field go through `redact` first. An intervention
-    is precisely the moment a member's record is on screen, and the packet will be
-    read by more people than the run itself, so it is the last place to relax
-    about what gets persisted.
+    happens exactly when a member's record is on screen, and more people read the
+    packet than read the run, so this is the last place to relax about what lands
+    on disk.
     """
     directory = Path(evidence) if evidence else None
     if directory:
@@ -298,8 +293,8 @@ def raise_intervention(
         screenshot=_try_screenshot(page, directory / f"{request_id}-before.png") if directory else None,
         checkpoint=step.checkpoint.to_json() if step.checkpoint else None,
         evidence_dir=str(directory) if directory else None,
-        options=options or ["resume once the page is fixed", "skip this step",
-                            "abort the run", "you finished it by hand"],
+        options=options or ["fix the page in the open browser, then resume",
+                            "abort the run"],
         context={"app": capability.app_id, "variant": capability.app_variant or "default"},
     )
     if directory:
@@ -319,7 +314,7 @@ def _expected(step: Step) -> str | None:
 
 class OperatorConsole(Protocol):
     """Whoever currently holds the browser. Small on purpose, so the terminal
-    implementation and a production review queue are substitutable."""
+    version and a production review queue can stand in for each other."""
 
     def ask(self, request: InterventionRequest) -> Response: ...
 
@@ -329,30 +324,51 @@ class OperatorConsole(Protocol):
 class ConsoleOwner:
     """A person at the terminal. The CLI's default console, and the mocked part.
 
-    `auto` exists so the demo and the test suite can run unattended. It answers
-    every handoff with ABORT and every approval with no, never with yes: an
-    automatic yes would leave the escalation path untested in exactly the way
-    that matters, and would quietly approve writes.
+    `auto` lets the demo and the test suite run unattended. It answers every
+    handoff with ABORT and declines every approval, never approves: an automatic
+    yes would quietly approve writes, and would leave the escalation path
+    untested in exactly the way that matters.
     """
 
-    def __init__(self, *, auto: bool = False, stream: Any = None) -> None:
+    def __init__(self, *, auto: bool = False, stream: Any = None,
+                 headed: bool = False) -> None:
         self.auto = auto
         self.out = stream or sys.stderr
+        # Whether there is a window for the operator to act in. Headless is the
+        # default everywhere, and "fix it in the browser, then resume" is an
+        # instruction nobody can follow without a browser.
+        self.headed = headed
 
     def ask(self, request: InterventionRequest) -> Response:
         print(request.render(), file=self.out)
         if self.auto:
             print("  [unattended: aborting rather than guessing]\n", file=self.out)
             return Response(Decision.ABORT, "no operator available")
-        print("  the browser is yours. [r]esume  [s]kip step  [a]bort  [c]ompleted by hand",
+
+        # Offer only what the engine honors. replay.py acts on RESUME and stops
+        # on everything else, so listing skip-this-step and completed-by-hand
+        # would be four prompts wired to two outcomes. They are in REPORT.md
+        # under Cuts instead, because an option that silently aborts is worse
+        # than no option at all.
+        if not self.headed:
+            # Nothing to hand over: headless is the default, and there is no
+            # window for anyone to fix the page in.
+            print("  the browser is headless, so there is no window to fix this in.\n"
+                  "  re-run with --headed to take the session over.\n", file=self.out)
+            return Response(Decision.ABORT, "headless: no session to hand over")
+
+        print("  the browser is yours. fix the page, then:  [r]esume  [a]bort",
               file=self.out)
         try:
             choice = input("  > ").strip().lower()[:1]
             note = input("  what did you do? ").strip()
         except (EOFError, KeyboardInterrupt):
-            return Response(Decision.ABORT, "no input available")
-        return Response({"r": Decision.RESUME, "s": Decision.SKIP,
-                         "c": Decision.COMPLETED}.get(choice, Decision.ABORT),
+            # Both mean nobody is answering, so abort even if a choice was already
+            # typed. Ctrl-C is how a person cancels, and this module does not guess
+            # on their behalf. The note is distinct from "(no note given)" so the
+            # evidence can tell an empty keyboard apart from an empty answer.
+            return Response(Decision.ABORT, note="no input available")
+        return Response(Decision.RESUME if choice == "r" else Decision.ABORT,
                         note=note or "(no note given)")
 
     def approve(self, *, capability: str, step: Step) -> bool:
@@ -372,9 +388,9 @@ class ConsoleOwner:
 class ScriptedConsole:
     """Non-interactive stand-in for tests and demos.
 
-    `actions` is how a test says "the human moved the page": it is handed the same
-    OwnedPage a real operator would drive, so the resume path sees genuine drift
-    rather than a simulated flag.
+    `actions` is how a test says "the human moved the page". It gets the same
+    OwnedPage a real operator would drive, so the resume path sees the page
+    actually move rather than a simulated flag.
     """
 
     decision: Decision = Decision.RESUME
@@ -432,14 +448,13 @@ def operator_takeover(
 ) -> TakeoverRecord:
     """Hand the operator the same live page, then record what they did.
 
-    The same page, not a fresh one: the entire value of escalating rather than
-    failing is that the operator inherits the session, the frameset and the
-    half-filled form. Sending them a URL to reopen loses the session, turns a
-    thirty second fix into a re-login, and on a real core banking product may not
-    be reachable by URL at all.
+    The operator inherits the live session, the frameset and the half-filled
+    form, which is the whole reason to escalate instead of failing. Sending them
+    a URL to reopen loses the session, turns a thirty second fix into a re-login,
+    and on a real core banking product the screen may not be reachable by URL.
 
-    Returns with the session in RESUMING. It does not return control to the
-    automation; only a re-verified checkpoint does that.
+    Returns with the session in RESUMING. Only a re-verified checkpoint hands
+    control back to the automation.
     """
     owner.to_operator(f"intervention {request.id}: {request.reason.value}")
     handle = OwnedPage(page, Owner.OPERATOR, owner)
@@ -449,13 +464,13 @@ def operator_takeover(
     try:
         response = console.ask(request)
         # A scripted console drives the page here; a human drives the real
-        # browser window while `ask` is blocked on their answer. Both end up
-        # having moved the same object, which is the point.
+        # browser window while `ask` blocks on their answer. Either way, the
+        # same object gets moved.
         act = getattr(console, "act", None)
         if act is not None:
             act(handle)
     finally:
-        # Even if the console blew up mid-handoff, the session must not be left
+        # If the console blows up mid-handoff, the session must not be left
         # stranded in OPERATOR with nobody holding it.
         hand_back(owner, request)
 
@@ -510,29 +525,27 @@ def resume_after_takeover(
 ) -> ResumeVerdict:
     """Re-check the current step's checkpoint before trusting anything inherited.
 
-    This is the part that is easy to skip and expensive to skip. Every position
-    the replay engine holds -- which frame is current, which record is open, that
-    the search was submitted -- was inferred from actions it took itself. A human
-    who has just had the browser may have navigated away, signed in as somebody
-    else, opened a different member or closed the frameset, and none of that
-    invalidates a single variable in our process. Inherited state is a claim about
-    the world made before a person changed the world. Resuming blindly at step N+1
-    is how automation performs an action on the wrong record.
+    Every position the replay engine holds -- which frame is current, which
+    record is open, that the search was submitted -- was inferred from its own
+    actions. A human who just had the browser may have navigated away, signed in
+    as someone else, opened a different member or closed the frameset, and none
+    of that changes a single variable in our process. Resuming blindly at step
+    N+1 is how automation acts on the wrong record.
 
-    So resume asserts the same condition the step asserted, against the page as it
-    is now. It succeeds and returns control, or it fails and leaves the session in
-    RESUMING for the caller to escalate again. It never guesses.
+    So resume asserts the same condition the step asserted, against the page as
+    it is now. Either it returns control, or it leaves the session in RESUMING
+    for the caller to escalate again. It never guesses.
 
-    `verify` is injectable because the replay engine's verifier knows about the
-    artifact's frames and targets; the default below is the frame-aware fallback
-    used when escalation runs on its own.
+    `verify` is injectable because the replay engine's verifier knows the
+    artifact's frames and targets. `default_verify` below is the fallback for
+    when escalation runs on its own.
     """
     if owner.state is not Owner.RESUMING:
         raise OwnershipError(f"resume expects the session in resuming, found {owner.state.value}")
 
     if step.checkpoint is None:
-        # No checkpoint means no way to prove the page is where we left it. Say
-        # so in the verdict rather than letting the absence read as a pass.
+        # No checkpoint means no way to prove the page is where we left it. The
+        # verdict says so, rather than letting the absence read as a pass.
         owner.to_automation("no checkpoint on step, resumed unverified")
         return ResumeVerdict(True, None, redact(_safe_url(page)),
                              f"step {step.index} has no checkpoint; resumed without proof")
@@ -550,9 +563,9 @@ def resume_after_takeover(
 def default_verify(page: Any, checkpoint: Checkpoint) -> tuple[bool, str]:
     """Frame-aware checkpoint check.
 
-    The fixture is a frameset, so `page.content()` returns the frameset markup and
-    none of the text. Anything reading only the top document reports a false
-    negative on every text checkpoint here, which is worth a few lines to avoid.
+    The fixture is a frameset, so `page.content()` returns the frameset markup
+    and none of the text inside it. Checking only the top document fails every
+    text checkpoint here, so this reads all the frames.
     """
     if checkpoint.kind == "url_contains":
         url = _safe_url(page)
@@ -583,8 +596,8 @@ class Escalator:
     """Owns the handoff, the ownership transitions, and the re-verification.
 
     The object replay reaches for. Everything it does is available piecemeal
-    above; this exists so the caller cannot assemble the sequence wrongly, in
-    particular cannot resume without re-verifying.
+    above; this exists so a caller cannot assemble the sequence wrongly, above
+    all cannot resume without re-verifying.
     """
 
     def __init__(self, console: OperatorConsole, evidence: Any = None,
@@ -614,8 +627,8 @@ class Escalator:
                       verifier: CheckpointVerifier | None = None) -> None:
         """Raising form of `resume`, for callers that treat a moved page as fatal.
 
-        A missing checkpoint is itself a refusal to guess: the failure happened
-        before anything was confirmed, so there is no position to resume from.
+        A missing checkpoint raises too: the failure happened before anything was
+        confirmed, so there is no known position to resume from.
         """
         if last_checkpoint is None:
             raise ResumeRefused("no confirmed checkpoint to resume from; the run cannot "
@@ -665,7 +678,7 @@ def _safe_url(page: Any) -> str:
 def _try_screenshot(page: Any, path: Path) -> str | None:
     """Escalation must not fail because the screenshot did.
 
-    A packet without a picture is degraded. A crash here loses the live page,
+    A packet without a picture is still usable. A crash here loses the live page,
     which is the whole asset the operator was about to be handed.
     """
     try:

@@ -1,16 +1,16 @@
 """Command line entry points: record, review, approve, replay.
 
-The commands are separate on purpose, and the separation is the argument. You
-cannot record-and-run in one step, because approval sits between them and an
-approval you can skip is not one. The sequence a person actually performs is:
+The commands are separate so a human approval sits between recording and
+running. There is no record-and-run step, because an approval you can skip
+does not gate anything. The usual sequence is:
 
     record   -- a model drives the app once, producing a draft artifact
     show     -- read what it recorded, including the strategies it rejected
-    approve  -- sign it off; this is the only thing that makes it replayable
+    approve  -- sign it off; nothing replays until this happens
     replay   -- run it, repeatedly, with no model involved
 
-`record` is the only command that needs an API key, and the only one that costs
-anything per run. That asymmetry is the point of the whole system.
+Only `record` needs an API key, and only `record` costs anything per run. That
+asymmetry is the point of the whole system.
 """
 
 from __future__ import annotations
@@ -38,9 +38,8 @@ DEFAULT_APP = "http://127.0.0.1:8899"
 def _policy(entry_url: str, *, read_only: bool = False, unattended: bool = False) -> Policy:
     """The allowlist for a run.
 
-    Narrowed to the origin the artifact was recorded against. A capability is
-    not a general-purpose browser, and the surface gate is what stops it
-    becoming one when something later goes wrong.
+    Narrowed to the origin the artifact was recorded against, so a capability
+    cannot turn into a general-purpose browser when something later goes wrong.
     """
     from urllib.parse import urlparse
     host = urlparse(entry_url).netloc
@@ -57,18 +56,18 @@ def _browser(headed: bool) -> Any:
     return play, browser, browser.new_page()
 
 
-def _console(unattended: bool) -> Any:
-    """A terminal operator, or a refusal to guess when nobody is watching.
+def _console(unattended: bool, *, headed: bool = False) -> Any:
+    """A terminal operator, or a console that refuses to answer with nobody there.
 
-    The unattended console never answers RESUME and never approves. An automatic
-    yes would leave the escalation path untested in exactly the way that
-    matters, and would wave through the writes it exists to gate.
+    The unattended console never answers RESUME and never approves. Saying yes
+    automatically would wave through the writes this gate exists to catch, and
+    would leave the escalation path untested.
     """
     from .escalation import Decision
     if unattended:
         return ScriptedConsole(decision=Decision.ABORT, note="no operator available",
                                approves=False)
-    return ConsoleOwner()
+    return ConsoleOwner(headed=headed)
 
 
 # --------------------------------------------------------------------------
@@ -117,10 +116,12 @@ def cmd_record(args: argparse.Namespace) -> int:
 def cmd_show(args: argparse.Namespace) -> int:
     """Print the artifact the way a reviewer needs to read it.
 
-    The rejected strategies are shown, not hidden. "Why is this matching by
-    position?" is the first question a reviewer asks, and the answer -- the
-    control has no accessible name -- is a fact about the application that they
-    should see before they sign.
+    Two readers want different things. Whoever signs the artifact off needs to
+    know what it does and what it cannot undo; the targeting is noise to them,
+    so `--brief` drops it. Whoever debugs it later needs the ranking and the
+    rejected strategies: "why is this matching by position?" is answered by
+    "the control has no accessible name", a fact about the application rather
+    than a shortcut the recorder took. That is the default view.
     """
     cap = load(args.capability)
     print(f"{cap.name}  v{cap.artifact_version}  "
@@ -141,11 +142,11 @@ def cmd_show(args: argparse.Namespace) -> int:
         head = f"  {step.index}. {step.action.value:9} [{step.risk.value}]"
         detail = step.url or step.text or ""
         print(f"{head} {detail}")
-        if step.target:
+        if step.target and not args.brief:
             for i, cand in enumerate(step.target.candidates):
                 mark = "->" if i == 0 else "  "
                 print(f"        {mark} {cand.strategy.value:20} {cand.value!r} "
-                      f"({cand.confidence:.2f}) {cand.note}")
+                      f"({cand.durability:.2f}) {cand.note}")
             for rej in step.target.rejected:
                 print(f"         x  {rej.strategy.value:20} {rej.value!r} -- {rej.note}")
         if step.checkpoint:
@@ -158,9 +159,8 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_approve(args: argparse.Namespace) -> int:
     """Sign off an artifact so replay will run it.
 
-    Approval is recorded against the artifact version. Any later edit bumps the
-    version and clears it, because an approval that survives an edit approves
-    something nobody read.
+    Approval is recorded against the artifact version. A later edit bumps the
+    version and clears the approval, so nobody replays a change no one read.
     """
     cap = load(args.capability)
     if cap.approved:
@@ -179,7 +179,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
     play, browser, page = _browser(args.headed)
     evidence = Evidence.start(cap.name, params=params)
-    escalator = Escalator(_console(args.unattended), evidence=evidence)
+    escalator = Escalator(_console(args.unattended, headed=args.headed), evidence=evidence)
     policy = _policy(cap.entry_url, read_only=args.read_only)
     policy.approver = escalator
 
@@ -189,8 +189,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
         browser.close(); play.stop()
 
     print(json.dumps(result.to_json(), indent=2))
-    # Exit codes distinguish the three outcomes, so a shell caller can branch on
-    # them the same way the type does: 0 worked, 3 answered "no", 1 broke.
+    # Exit codes split the three outcomes so a shell caller can branch on them
+    # like the Outcome type does: 0 worked, 3 answered "no", 1 broke.
     return {Outcome.SUCCESS: 0, Outcome.BUSINESS_OUTCOME: 3, Outcome.FAILURE: 1}[result.outcome]
 
 
@@ -217,6 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = sub.add_parser("show", help="print an artifact for review")
     show.add_argument("capability")
+    show.add_argument("--brief", action="store_true",
+                      help="what it does and what it can undo, without the targeting detail")
     show.set_defaults(func=cmd_show)
 
     app = sub.add_parser("approve", help="mark an artifact replayable")

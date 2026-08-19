@@ -35,7 +35,7 @@ as an answer, and a legitimate "not found" is never reported as a broken click.
 three steps later as an unrelated extraction error.
 
 *Every wait is a condition.* There is no sleep in this file. Waits are locator
-waits that return the instant the page reaches a state we recognise, which is
+waits that return the instant the page reaches a state we recognize, which is
 exactly what lets a slow application be a recovery rather than a failure.
 """
 
@@ -58,25 +58,24 @@ from .schema import (
     ActionKind, BusinessRule, Capability, Checkpoint, Outcome, ReplayResult, Step, Target,
 )
 
-# A step gets a short budget first; anything slower is treated as a symptom
-# rather than a verdict, and the budget is widened once. Two numbers rather than
-# a per-step tunable, because a replay that needs per-step timeouts to pass is a
-# replay that is really waiting on a sleep.
+# Short wait first, then one longer one. A step that is merely slow is treated
+# as a symptom worth waiting out, not as a failure. Two numbers rather than a
+# per-step setting: if a step needs its own timeout, it is really waiting on a
+# sleep.
 STEP_TIMEOUT_MS = 2_000
 SLOW_TIMEOUT_MS = 12_000
 
-# Per-step attempt ceiling. Low on purpose: a step needing four tries is a step
-# whose targeting is wrong, and retrying harder hides that from the one person
-# who could fix it.
+# Three tries per step. Low on purpose. A step that needs four has bad
+# targeting, and retrying harder just hides that.
 MAX_ATTEMPTS = 3
 
-# Re-entering the application is the recovery of last resort, and it is bounded.
-# An interstitial that reappears after every dismissal is not an interstitial, it
-# is a wall, and the caller needs to hear that rather than watch us loop.
+# Starting the whole flow over is the last resort, so it is capped. A popup
+# that comes back every time you dismiss it is not going away, and the caller
+# should be told that instead of watching us loop.
 MAX_REENTRIES = 3
 MAX_SESSION_RECOVERIES = 1
-# Dismissals of the same interstitial on the same step before it counts as a
-# wall rather than a notice.
+# How many times we dismiss the same popup on one step before deciding it is
+# not going away.
 MAX_DISMISSALS = 2
 
 
@@ -95,13 +94,12 @@ class ParamError(ValueError):
 # --------------------------------------------------------------------------
 
 def frame_for(page: Any, step: Step | None = None) -> Any:
-    """The frame a step's assertions apply to.
+    """Which half of the window a step's checks apply to.
 
-    Framesets are why this exists, and why nothing here asserts against the whole
-    page. In this class of application the nav frame repeats most of the words
-    the content frame uses, so "is 'Member Search' on the page" is also true on
-    the access-denied screen. Scoping the question to one frame is the difference
-    between a checkpoint and a coincidence.
+    Framesets are why this exists. The nav frame repeats most of the words the
+    content frame uses, so "is 'Member Search' on the page" is also true on the
+    access-denied screen. Asking about one frame instead of the whole page is the
+    difference between a real check and a coincidence.
     """
     key = None
     if step is not None and step.target and step.target.candidates:
@@ -151,16 +149,16 @@ def _hold(frame: Any, checkpoint: Checkpoint, timeout_ms: int) -> None:
     """
     kind, value = checkpoint.kind, checkpoint.value
     if kind == "url_contains":
-        # The frame's URL, not the page's: for a frameset the top document stays
-        # at "/" for the whole session and would match nothing useful.
+        # The frame's URL, not the page's. In a frameset the outer document
+        # sits at "/" the whole session, so matching on it tells you nothing.
         frame.wait_for_url(lambda url: value in url, timeout=timeout_ms)
     elif kind == "text_present":
         frame.get_by_text(value).first.wait_for(state="visible", timeout=timeout_ms)
     elif kind == "text_absent":
         frame.get_by_text(value).first.wait_for(state="detached", timeout=timeout_ms)
     elif kind == "element_present":
-        # Matched on accessible name, so a recording can assert "the Search
-        # button is here" without pinning to markup that changes per render.
+        # Matched by name, so a recording can say "the Search button is here"
+        # without depending on markup that changes every render.
         if not _named_control(frame, value):
             raise PlaywrightTimeout(f"no control named {value!r}")
     else:
@@ -179,13 +177,14 @@ def _named_control(frame: Any, name: str) -> bool:
 
 def verify(page: Any, checkpoint: Checkpoint, *, frame: Any = None,
            timeout_ms: int = STEP_TIMEOUT_MS) -> tuple[bool, str]:
-    """Did the step actually arrive? Returns the verdict and what was seen.
+    """Did the step actually arrive? Returns the answer and what was on screen.
 
-    The observed value comes back even on success, because that is what the
-    evidence file records, and a passing run's evidence is the thing you compare
-    against when a later one fails. Exposed rather than private so the escalation
-    path re-establishes position using this definition of a checkpoint instead of
-    forming a second opinion about what one means.
+    It returns what it saw even when the check passed, because that goes into the
+    evidence file, and a good run's evidence is what you compare against when a
+    later one fails.
+
+    Public rather than private so the escalation path checks position using this
+    same definition, instead of inventing a second one.
     """
     scope = frame if frame is not None else frame_for(page)
     try:
@@ -212,18 +211,19 @@ def _wait_for_any_text(frame: Any, needles: Iterable[str], timeout_ms: int) -> N
 
 
 # --------------------------------------------------------------------------
-# conditions the engine recognises on any application
+# conditions the engine recognizes on any application
 # --------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Condition:
-    """A screen that is about the session or the server, not about the request.
+    """A screen about the session or the server, rather than about the request.
 
-    These live in the engine rather than in the artifact because they are true of
-    the class of application, not of one tenant's business rules -- which is the
-    opposite of `BusinessRule`, and the line between them is the whole point.
-    `kind` is the verdict and `tactic` is the response, kept apart so a reviewer
-    can change what we do about a condition without re-deciding what it is.
+    Session timeouts and server errors live here, in the engine, because they are
+    true of this kind of application generally. "No such member" lives in the
+    artifact instead, because it is true of one bank. That split is the point.
+
+    `kind` is what we decided it is; `tactic` is what we do about it. Kept apart
+    so you can change the response without re-arguing the diagnosis.
     """
 
     code: str
@@ -233,9 +233,9 @@ class Condition:
     expected: str = ""
 
 
-# Order is priority. The session check runs first because a re-login screen can
-# still carry the previous screen's wording, and reading that as an answer would
-# report "no such member" for a member that exists.
+# Order matters. Check for a logged-out screen first: a login page can still
+# show the old page's words, and reading those as an answer would report "no
+# such member" for a member who exists.
 CONDITIONS: tuple[Condition, ...] = (
     Condition("session_expired", "session has expired", "recoverable", "reenter"),
     Condition("interstitial", "scheduled maintenance", "recoverable", "dismiss"),
@@ -245,9 +245,9 @@ CONDITIONS: tuple[Condition, ...] = (
               "the record this flow was recorded against"),
 )
 
-# Text on an interstitial's dismissal control, in preference order. A closed
-# vocabulary, not inference: the words a legacy app puts on an acknowledge
-# control are few, and guessing at replay time is what this module refuses to do.
+# The words that appear on a popup's dismiss button, best first. A fixed list
+# rather than guessing: old apps use a handful of words, and replay does not
+# guess.
 _DISMISS = ("Continue", "OK", "Acknowledge", "Close", "Proceed")
 
 
@@ -310,8 +310,8 @@ def bind_params(cap: Capability, params: dict[str, Any]) -> dict[str, Any]:
             if spec.required:
                 raise ParamError(f"missing required parameter {name!r}")
             continue
-        # `bool` subclasses `int` in Python, so an unguarded integer check would
-        # accept True as an account number. Booleans are settled first.
+        # In Python, True is also an int. Without this check, True would pass
+        # as an account number.
         if isinstance(value, bool) != (spec.type == "boolean"):
             raise ParamError(
                 f"parameter {name!r} must be {spec.type}, got {type(value).__name__}")
@@ -364,8 +364,8 @@ class Replay:
         self._recovered: list[str] = []
         self._reentries = 0
         self._session_recoveries = 0
-        # Per step, because an interstitial that appears once per screen is
-        # normal and one that appears twice on the same screen is not.
+        # Counted per step. One popup per screen is normal; two on the same
+        # screen is not.
         self._dismissals: dict[int, int] = {}
 
     # -- public ------------------------------------------------------------
@@ -385,12 +385,10 @@ class Replay:
             try:
                 self.policy.check_capability(cap)
             except PolicyViolation as exc:
-                # Returned rather than raised. The caller is an agent, and a
-                # refusal is information it has to act on -- an exception
-                # crossing this boundary is the kind of thing a caller swallows,
-                # and "the automation declined" then looks like "the automation
-                # broke". ParamError above still raises: that one is the caller's
-                # own bug, not an outcome of the attempt.
+                # Returned, not raised. The caller is a program, and a refusal
+                # is something it has to handle. Exceptions get swallowed, and
+                # then "we declined" looks like "we crashed". ParamError still
+                # raises, because that is the caller's mistake, not a result.
                 return self._fail(
                     cap, None, f"policy[{exc.decision.gate}]", exc.decision.reason,
                     message="refused before starting",
@@ -431,10 +429,9 @@ class Replay:
         self, cap: Capability, step: Step, entry: str, text: dict[int, str | None],
         urls: dict[int, str | None], outputs: dict[str, Any],
     ) -> ReplayResult | _Reenter | None:
-        # The surface gate asks "may we act here", so a navigation is judged on
-        # where it is going and everything else on where the browser already is.
-        # Handing it the current page for a NAVIGATE would check the screen we
-        # are leaving, which is exactly the check that is not worth making.
+        # The question is "are we allowed to act here". For a navigate, that
+        # means where we are going; for everything else, where we already are.
+        # Checking the page we are leaving would be pointless.
         where = (urls[step.index] or entry) if step.action is ActionKind.NAVIGATE else self._url()
         self._gate(cap, step, where)
 
@@ -443,13 +440,11 @@ class Replay:
             record.risk = step.risk.value
             for attempt in range(1, MAX_ATTEMPTS + 1):
                 last = attempt == MAX_ATTEMPTS
-                # Before re-acting, ask whether the recovery already achieved
-                # what this step was for. Dismissing an interstitial commonly
-                # lands on the destination, and repeating the action would walk
-                # straight back into it. On an IRREVERSIBLE step it would be
-                # worse than a loop: re-clicking a submit that already went
-                # through is a duplicate write, which no amount of retrying can
-                # undo.
+                # Before doing it again, check whether it already happened.
+                # Dismissing a popup often lands you where you were going, and
+                # repeating the click would walk straight back into it. On an
+                # irreversible step that is a duplicate payment, which no
+                # amount of retrying can undo.
                 if attempt > 1 and step.checkpoint is not None and self._already_there(step):
                     record.checkpoint_ok = True
                     record.extra["satisfied_by_recovery"] = True
@@ -466,9 +461,9 @@ class Replay:
                     if self._unresolved(cap, step, exc):
                         continue
                 except (PlaywrightTimeout, PlaywrightError) as exc:
-                    # The control resolved but would not accept the action: it
-                    # was covered, disabled, or detached mid-flight. Worth one
-                    # more look, because that is what a stale handle looks like.
+                    # We found the control but it would not take the action:
+                    # covered, disabled, or gone mid-flight. Worth one more
+                    # look, because that is what a stale handle looks like.
                     if not last and self._reobserve(step):
                         continue
                     raise _Abort(f"{step.action.value} could not be carried out",
@@ -500,9 +495,9 @@ class Replay:
         decision = self.policy.check_step(cap, step, where)
         if decision.allowed:
             return
-        # An approval gap is answerable by a person, so it becomes a handoff. Any
-        # other refusal is structural: the answer is to change the policy or the
-        # artifact, deliberately, not to have an operator wave it through at 3am.
+        # A missing approval is something a person can answer, so hand it over.
+        # Any other refusal needs the policy or the artifact changed on purpose,
+        # not someone waving it through at 3am.
         if decision.gate == "risk" and self.escalator is not None:
             if self._handoff(cap, step, Reason.APPROVAL, decision.reason):
                 return
@@ -529,14 +524,13 @@ class Replay:
                 self._patiently(step.index, "the page",
                                 lambda ms: _wait_for_any_text(frame, needles, ms))
             except PlaywrightTimeout:
-                pass      # nothing recognised arrived; the checkpoint is the verdict
+                pass      # nothing recognized arrived; the checkpoint is the verdict
 
-        # A step with no checkpoint is the recording saying there is nothing to
-        # arrive at -- typing into a field, reading a cell. Waiting for a state
-        # nobody expects would spend the whole budget on every such step and
-        # find nothing, so the page is classified as it stands. A condition that
-        # is genuinely on screen is still caught; one that has not rendered yet
-        # is caught by the next step, which does have something to wait for.
+        # No checkpoint means the recording is saying there is nothing to
+        # arrive at, like typing in a field. Waiting for a state nobody expects
+        # would burn the full timeout on every such step and find nothing, so
+        # we just read the page as it is. Anything genuinely on screen is still
+        # caught, and anything still rendering is caught by the next step.
         text = frame_text(frame)
 
         condition = _condition(text)
@@ -564,11 +558,10 @@ class Replay:
             self._last_checkpoint = step.checkpoint
             return None
 
-        # Deliberately not retried. The action has already happened, and on a
-        # legacy app it has usually navigated, so re-running the step would
-        # either re-submit a form or fail to find a control that is no longer
-        # there -- and then report *that* as the fault. The patient wait above
-        # already gave the page its second chance; this is the verdict.
+        # Not retried, on purpose. The action already happened and the page has
+        # usually moved, so running the step again would either resubmit the
+        # form or fail to find a control that is gone, then blame that. The
+        # longer wait above was the second chance; this is the verdict.
         self._capture(step, f"checkpoint failed: {step.checkpoint.to_json()}")
         if self._handoff(
             cap, step, Reason.CHECKPOINT,
@@ -593,8 +586,8 @@ class Replay:
         self, cap: Capability, step: Step, condition: Condition, frame: Any,
     ) -> ReplayResult | _Reenter:
         if condition.kind == "failure":
-            # Not retried. Retrying a permission refusal or an application error
-            # just reaches the same screen more slowly, and the fix is a person's.
+            # Not retried. Trying a permission error again just reaches the
+            # same screen more slowly. Someone has to fix it.
             self._capture(step, condition.code)
             self._handoff(cap, step, Reason.UNEXPECTED,
                           f"{condition.code.replace('_', ' ')} during step {step.index}",
@@ -604,11 +597,10 @@ class Replay:
 
         if condition.tactic == "dismiss":
             if self._dismissals.get(step.index, 0) >= MAX_DISMISSALS:
-                # Dismissed, and it came straight back. That is not an
-                # interstitial, it is a wall. Saying so here matters: without
-                # this the attempt loop runs out and the run blames whatever
-                # unrelated thing the next attempt tripped over, which sends
-                # someone to fix a control that was never broken.
+                # Dismissed it and it came straight back, so it is not going
+                # away. Saying so here matters: otherwise the retries run out
+                # and the run blames whatever the next attempt tripped over,
+                # sending someone to fix a control that was never broken.
                 self._capture(step, "interstitial kept reappearing")
                 self._handoff(cap, step, Reason.LIMIT,
                               f"an interstitial blocked step {step.index} after "
@@ -623,20 +615,19 @@ class Replay:
                              _excerpt(frame_text(frame)))
             self._dismissals[step.index] = self._dismissals.get(step.index, 0) + 1
             self._note(step.index, condition.code, detail)
-            # Where dismissing leaves you decides what to do next. If the notice
-            # was covering the screen the step was heading for, the step is
-            # already done and repeating the action would be a second write for
-            # nothing. If it bounced back to the start, then anything typed
-            # before the interruption is gone with it, and only re-entering the
-            # flow puts it back -- retrying the step alone would submit a form
-            # that is now empty and blame the checkpoint for the result.
+            # What to do next depends on where dismissing left you. If the
+            # popup was covering the screen you were heading for, the step is
+            # already done and repeating it would be a second write for nothing.
+            # If it bounced you back to the start, whatever you typed went with
+            # it, and only starting the flow over puts it back. Retrying just
+            # the step would submit an empty form and blame the checkpoint.
             if self._already_there(step):
                 return _RETRY
             return _Reenter(condition.code, "dismissed an interstitial")
 
-        # Re-entry means loading the entry URL again. This system never handles
-        # credentials, so if the application still wants a login after that, it
-        # is a person's decision rather than another retry.
+        # Starting over means loading the entry URL again. This system never
+        # handles passwords, so if the app still wants a login after that, a
+        # person decides what happens next.
         if self._session_recoveries >= MAX_SESSION_RECOVERIES:
             self._capture(step, "session expired again after re-entering")
             self._handoff(cap, step, Reason.AUTH,
@@ -674,9 +665,9 @@ class Replay:
             raise ValueError(f"step {step.index} is {step.action.value} with no target")
 
         resolution = resolve_detail(self.page, step.target)
-        # The losing strategies are the early warning: a flow that has quietly
-        # slipped from role+name down to a DOM path still passes, and is one
-        # release away from not passing. Only the evidence shows the slide.
+        # The strategies that failed are the early warning. A flow that has
+        # slipped from "the link named Search" down to a raw HTML path still
+        # passes, and is one release from not passing. Only the log shows it.
         record.resolved_by(resolution.winner,
                            after=[_as_target(a) for a in resolution.attempts[:resolution.rank]])
         if resolution.degraded:
@@ -684,11 +675,11 @@ class Replay:
         locator = resolution.locator
         value = text[step.index] or ""
 
-        # Interactions get the long budget in one go rather than the short-then-
-        # long retry used for page states. Playwright's own actionability wait is
-        # already condition-based, and a click is the one thing that must never
-        # be issued twice: whether it arrived is the checkpoint's question, not
-        # the timeout's.
+        # Clicks and typing get the long timeout straight away, instead of the
+        # short-then-longer retry used for waiting on the page. Playwright
+        # already waits for the control to be usable, and a click is the one
+        # thing that must never be sent twice. Whether it worked is the
+        # checkpoint's job, not the timeout's.
         if step.action is ActionKind.CLICK:
             locator.click(timeout=SLOW_TIMEOUT_MS)
         elif step.action is ActionKind.TYPE:
@@ -722,16 +713,14 @@ class Replay:
                    f"{SLOW_TIMEOUT_MS}ms and it arrived")
 
     def _reobserve(self, step: Step) -> bool:
-        """One cheap re-attempt for a control that was not there a moment ago.
+        """Look again for a control that was not there a moment ago.
 
-        No sleep and no tactic, because there is nothing recognised to respond
-        to: the page is simply re-read and the step re-resolved against whatever
-        is current. Bounded by MAX_ATTEMPTS, and it does not pretend to know why
-        the control was missing.
+        No sleep, no tactic: we do not know why it was missing, so we just re-read
+        the page and try to find it again. Capped by MAX_ATTEMPTS.
 
-        Logged as an event rather than a recovery. `recovered` means a named
-        condition was recognised and handled; putting a bare re-attempt in there
-        would let a run that failed three times report three recoveries.
+        Logged as an event, not a recovery. `recovered` means we recognized a
+        named problem and handled it. If plain retries counted, a run that failed
+        three times would claim three recoveries.
         """
         self._event("re_resolving", index=step.index, action=step.action.value)
         return True
@@ -754,8 +743,8 @@ class Replay:
                     control.first.click(timeout=SLOW_TIMEOUT_MS)
                 except (PlaywrightTimeout, PlaywrightError):
                     continue
-                # Re-resolved, because acknowledging a notice usually navigates
-                # and the frame that held it may be a different document now.
+                # Found again from scratch, because dismissing a popup usually
+                # navigates and the frame may be a different document now.
                 after = frame_for(self.page, step)
                 try:
                     after.get_by_text(condition.when_text).first.wait_for(
@@ -771,10 +760,10 @@ class Replay:
             self.evidence.recovery(index, tactic, detail)
 
     def _event(self, _event_kind: str, **fields: Any) -> None:
-        # The name is underscored so that a caller may pass a field literally
-        # called `kind` -- which the condition events do -- without colliding
-        # with this parameter. Cheap, and it removes a whole class of call-site
-        # bug that only shows up on the error path.
+        # Underscored so a caller can pass a field actually named `kind` (the
+        # condition events do) without clashing with this parameter. This is
+        # the keyword collision that only showed up on the error path, where
+        # nothing was exercising it.
         if self.evidence:
             self.evidence.event(_event_kind, **fields)
 
@@ -805,19 +794,22 @@ class Replay:
             reason, cap, step, self.page,
             str(self.evidence.dir) if self.evidence else None,
             question=question, observed=observed,
-            options=["fix it in the open browser, then resume",
-                     "skip this step", "abort", "mark completed by hand"],
+            options=["fix the page in the open browser, then resume",
+                     "abort the run"],
         )
         if expected:
             request.expected = expected
         record = self.escalator.escalate(request, self.page)
+        # Resume is the only choice this engine acts on, so the console offers
+        # only resume and abort. Skip-this-step and completed-by-hand are not
+        # implemented: an option that silently quits is worse than no option.
         if record.decision is not OperatorDecision.RESUME:
             return False
         try:
             self.escalator.verify_resume(self.page, self._last_checkpoint, verify)
         except ResumeRefused as exc:
-            # The person moved the session somewhere the run cannot continue
-            # from. Refusing is the entire point of re-verifying.
+            # The person left the session somewhere we cannot continue from.
+            # Refusing is the whole point of checking.
             self._note(step.index, "resume_refused", str(exc))
             return False
         return True
@@ -890,8 +882,8 @@ def replay(
 # helpers
 # --------------------------------------------------------------------------
 
-# Sentinel for "this step is worth another attempt", distinct from None, which
-# means the step is done and the run moves on.
+# Means "try this step again". Distinct from None, which means the step is
+# done and the run moves on.
 _RETRY = object()
 
 
@@ -921,13 +913,13 @@ class _NullStep:
 def _as_target(attempt: Any) -> Target:
     """A failed Attempt, in the shape the evidence writer records.
 
-    Confidence is zeroed rather than carried over: this is a strategy that did
-    not work, and leaving its recorded confidence on it would read, in the
+    Durability is zeroed rather than carried over: this is a strategy that did
+    not work, and leaving its recorded durability on it would read, in the
     evidence file, as though it had.
     """
     return Target(
         strategy=attempt.strategy, value=attempt.value, frame=attempt.frame,
-        confidence=0.0,
+        durability=0.0,
         note=attempt.reason or (
             f"matched {attempt.matched}" if attempt.matched is not None else "no match"
         ),
