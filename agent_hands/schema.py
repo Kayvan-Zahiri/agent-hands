@@ -1,20 +1,20 @@
 """The capability artifact, and the contract replay returns.
 
-This is the centre of the system. A capability is what an agent calls; the
-artifact is its serialised definition. Everything else -- the recorder, the
-replay engine, the escalation path -- is arranged around these types.
+This is the center of the system. A capability is what an agent calls; the
+artifact is its serialized definition. The recorder, the replay engine, and the
+escalation path are all arranged around these types.
 
-Two decisions worth stating up front, because they shape the rest:
+Two decisions shape the rest:
 
-1. A target is a *ranked list* of strategies, not a selector. Recording captures
-   every way the element could have been identified, ordered by how likely each
-   is to survive. Replay walks the list. That is the difference between a
-   recording that works next month and one that does not.
+1. A target is a ranked list of strategies rather than one selector. Recording
+   captures every way the element could have been identified, ordered by how
+   likely each is to survive, and replay walks the list until one works. That is
+   why a recording still works next month.
 
-2. A result is a tagged union of three outcomes, not an exception. "No such
-   member" is an answer the caller asked for; a stale session is something to
-   retry; a missing control is a bug. Collapsing those into success/exception is
-   what makes automation unusable in production, so the type refuses to.
+2. A result is a tagged union of three outcomes rather than an exception. "No
+   such member" is the answer the caller asked for, a stale session is worth a
+   retry, and a missing control is a bug. Collapsing those into success or
+   exception is what makes automation unusable in production.
 """
 
 from __future__ import annotations
@@ -33,12 +33,12 @@ SCHEMA_VERSION = "1.0"
 class Strategy(str, enum.Enum):
     """How an element can be identified, best first.
 
-    The order is the fallback order, and it is deliberate. Accessibility role
-    plus name is what a screen reader uses; it is derived from what the control
-    *is* rather than how it was built, so it survives markup changes and exists
-    on native desktop surfaces too. A DOM path survives nothing. Coordinates
-    survive less than that, and are recorded only so a human reviewing the
-    artifact can see the element was found no other way.
+    The order is the fallback order. Role plus accessible name is what a screen
+    reader uses: it comes from what the control is rather than how it was built,
+    so it survives markup changes and works on native desktop surfaces too. A
+    DOM path survives nothing. Coordinates survive even less, and are recorded
+    only so a human reading the artifact can see the element was found no other
+    way.
     """
 
     ROLE_NAME = "role_name"                # button "Search"
@@ -51,12 +51,20 @@ class Strategy(str, enum.Enum):
 
 @dataclass(frozen=True)
 class Target:
-    """One way to find one control, plus why it is expected to hold."""
+    """One way to find one control, plus why it is expected to hold.
+
+    `durability` is an ordinal rank. It says how long this way of finding the
+    control should keep working as the application changes, and it is a constant
+    per strategy rather than anything measured on the page. Nothing compares it
+    to a threshold, so only the ordering matters. It is stored so `show` can
+    print it and a reviewer can see that a run which fell to 0.4 is one release
+    away from breaking.
+    """
 
     strategy: Strategy
     value: str
     frame: str | None = None
-    confidence: float = 0.0
+    durability: float = 0.0
     note: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -64,7 +72,7 @@ class Target:
             "strategy": self.strategy.value,
             "value": self.value,
             "frame": self.frame,
-            "confidence": round(self.confidence, 3),
+            "durability": round(self.durability, 3),
             "note": self.note,
         }
 
@@ -74,8 +82,8 @@ class TargetSet:
     """Every way the recorder could identify one element, best first.
 
     `rejected` is kept on purpose. A reviewer asking "why is this matching by
-    position?" can see that the control had no accessible name, which is a fact
-    about the application rather than a shortcut taken by the recorder.
+    position?" can see the control had no accessible name, which is a fact about
+    the application rather than a shortcut the recorder took.
     """
 
     candidates: list[Target]
@@ -151,8 +159,8 @@ class Step:
 class Checkpoint:
     """An assertion that the step actually arrived somewhere.
 
-    Clicking is not arriving. Without this a replay reports success for a flow
-    that silently did nothing, which is worse than failing.
+    A click can land and change nothing. Without a checkpoint, replay reports
+    success for a flow that did nothing at all, which is worse than failing.
     """
 
     kind: Literal["url_contains", "text_present", "element_present", "text_absent"]
@@ -168,15 +176,15 @@ class Checkpoint:
 
 @dataclass(frozen=True)
 class BusinessRule:
-    """A screen that is an answer, not a fault.
+    """A screen that carries an answer rather than a fault.
 
-    "No member found" is the result of a lookup that ran correctly. The rule
-    lives in the artifact rather than in the replay engine because which screens
-    mean what is a fact about the application, and a shared engine that hard-codes
-    one tenant's error strings is a shared engine that is wrong for the next one.
+    "No member found" is what a lookup that ran correctly returns. The rule
+    lives in the artifact instead of the replay engine because which screens
+    mean what is a fact about one application, and a shared engine that
+    hard-codes one tenant's error strings is wrong for the next tenant.
 
-    `terminal` distinguishes an answer from a condition. A not-found result ends
-    the run successfully; a validation message means the input was wrong and the
+    `terminal` separates an answer from a condition. A not-found result ends the
+    run successfully. A validation message means the input was wrong and the
     caller may want to retry with different parameters, so it is reported the
     same way but flagged.
     """
@@ -226,10 +234,10 @@ class Output:
 class Capability:
     """A recorded flow an agent can invoke by name.
 
-    `app_id` and `app_variant` exist for the multi-tenant case: many
-    institutions run the same vendor product with different branding and
-    versions. The artifact is keyed on the product, and a variant may override
-    individual targets rather than forcing a re-record per tenant.
+    `app_id` and `app_variant` cover the multi-tenant case: many institutions
+    run the same vendor product with different branding and versions. The
+    artifact is keyed on the product, and a variant can override individual
+    targets instead of forcing a re-record per tenant.
     """
 
     name: str
@@ -276,11 +284,10 @@ class Capability:
 class Outcome(str, enum.Enum):
     """The three-way split.
 
-    SUCCESS and BUSINESS_OUTCOME are both "the automation worked". The
-    difference is what the caller does next, and conflating them with FAILURE is
-    the mistake this type exists to prevent: "no such member" is not a crash,
-    and treating it as one makes the capability unusable for the case it was
-    built for.
+    SUCCESS and BUSINESS_OUTCOME both mean the automation worked; they differ in
+    what the caller does next. Folding either into FAILURE is the mistake this
+    type prevents. "No such member" is a real answer, and reporting it as a
+    crash makes the capability useless for the case it was built for.
     """
 
     SUCCESS = "success"

@@ -54,21 +54,21 @@
             "strategy": "labelled_field",
             "value": "Member ID",
             "frame": "content",
-            "confidence": 0.85,
+            "durability": 0.85,
             "note": "caption cell left of the field in the layout table"
           },
           {
             "strategy": "nth_of_role",
             "value": "textbox[0]",
             "frame": "content",
-            "confidence": 0.4,
+            "durability": 0.4,
             "note": "index 0 of 1 textbox controls in the frame; breaks if the page reorders"
           },
           {
             "strategy": "dom_path",
             "value": "body > table:nth-of-type(2) > tbody > tr > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
             "frame": "content",
-            "confidence": 0.2,
+            "durability": 0.2,
             "note": "structural path; any layout change invalidates it"
           }
         ],
@@ -77,21 +77,21 @@
             "strategy": "role_name",
             "value": "",
             "frame": null,
-            "confidence": 0.0,
+            "durability": 0.0,
             "note": "control has no accessible name"
           },
           {
             "strategy": "role_name_in_region",
             "value": "",
             "frame": null,
-            "confidence": 0.0,
+            "durability": 0.0,
             "note": "control has no accessible name"
           },
           {
             "strategy": "point",
             "value": "346,96",
             "frame": "content",
-            "confidence": 0.05,
+            "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
           }
         ]
@@ -112,28 +112,28 @@
             "strategy": "role_name",
             "value": "link \"Submit Query\"",
             "frame": null,
-            "confidence": 0.95,
+            "durability": 0.95,
             "note": "unique by role and name across the whole page"
           },
           {
             "strategy": "role_name_in_region",
             "value": "link \"Submit Query\"",
             "frame": "content",
-            "confidence": 0.9,
+            "durability": 0.9,
             "note": "role and name, scoped to frame 'content'"
           },
           {
             "strategy": "nth_of_role",
             "value": "link[7]",
             "frame": "content",
-            "confidence": 0.4,
+            "durability": 0.4,
             "note": "index 0 of 1 link controls in the frame; breaks if the page reorders"
           },
           {
             "strategy": "dom_path",
             "value": "body > table:nth-of-type(2) > tbody > tr > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > button",
             "frame": "content",
-            "confidence": 0.2,
+            "durability": 0.2,
             "note": "structural path; any layout change invalidates it"
           }
         ],
@@ -142,14 +142,14 @@
             "strategy": "labelled_field",
             "value": "",
             "frame": null,
-            "confidence": 0.0,
+            "durability": 0.0,
             "note": "role 'link' is not a form field"
           },
           {
             "strategy": "point",
             "value": "310,121",
             "frame": "content",
-            "confidence": 0.05,
+            "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
           }
         ]

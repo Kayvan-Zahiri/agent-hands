@@ -1,18 +1,16 @@
 """Turn one successful discovery run into a reusable Capability artifact.
 
 The discovery agent works in literals: it typed "12345" because the goal said
-member 12345. An artifact that keeps those literals is a transcript, not a
-capability -- it can only ever look up Dolores Abernathy again.
+member 12345. Keep those literals and the artifact can only ever look up that
+one member, so the real work here is parameterization.
 
-So the interesting work here is parameterisation, and it happens at record time
-rather than at replay time on purpose. At record time we still know *where the
-literal came from*: it appeared in the goal, so it was an input, so it is a
-parameter. By replay time that provenance is gone and all you have is a digit
-string somewhere in a URL, which you would have to guess about. Guessing later
-is how a flow ends up templating a session id.
+It happens at record time on purpose. Right now we still know where a literal
+came from: it appeared in the goal, so it was an input, so it is a parameter. By
+replay time it is just a digit string somewhere in a URL, and guessing at that
+point is how a flow ends up templating a session id.
 
-The rule is one sentence: a literal that appears in the goal and is also used by
-the trajectory becomes a parameter; everything else stays literal.
+The rule: a literal that appears in the goal and is also used by the trajectory
+becomes a parameter; everything else stays literal.
 """
 
 from __future__ import annotations
@@ -52,9 +50,9 @@ class SchemaVersionError(ValueError):
 class RecordedAction:
     """One thing the agent did, with the targeting the perception layer derived.
 
-    Deliberately close to Step but not the same type: a Step has an index and is
-    parameterised, and neither is true until this module has run. Keeping them
-    separate stops half-built Steps from leaking into an artifact.
+    Close to Step, but a separate type: a Step has an index and is parameterized,
+    and neither is true until this module has run. Keeping them apart stops
+    half-built Steps from leaking into an artifact.
     """
 
     action: ActionKind
@@ -65,8 +63,8 @@ class RecordedAction:
     checkpoint: Checkpoint | None = None
     extracts: str | None = None
     note: str = ""
-    # What a READ step actually pulled off the page. Kept out of the artifact;
-    # it is here so outputs can be typed and described from a real observation.
+    # What a READ step pulled off the page. Kept out of the artifact, and here
+    # only so outputs can be typed and described from a real observation.
     observed: str | None = None
 
 
@@ -75,8 +73,8 @@ class RecordedAction:
 # --------------------------------------------------------------------------
 
 # Words that never name a parameter, so the scan keeps walking left past them.
-# The verbs are here because a goal is written as an instruction: "look up
-# member 12345" puts the verb next to the value about as often as the noun does.
+# The verbs are here because a goal reads as an instruction: "look up member
+# 12345" puts a verb next to the value about as often as a noun.
 _STOPWORDS = frozenset("""
 a an the for of with to on in and or is are be was this that their its
 please find look up get fetch show me then report check what value from
@@ -90,7 +88,7 @@ _QUALIFIERS = {
 }
 
 # A quoted phrase is one token: "Maeve Millay" is a single value the operator
-# has already delimited, and splitting it on the space loses that.
+# already delimited, and splitting it on the space loses that.
 _TOKEN = re.compile(
     r"\"[^\"]{1,80}\""
     r"|(?<![A-Za-z])'[^']{1,80}'"   # single quotes only where they cannot be an apostrophe
@@ -111,10 +109,10 @@ class _Binding:
 def infer_bindings(goal: str) -> list[_Binding]:
     """Pull the input literals out of the goal and give each one a name.
 
-    The name comes from the words in front of the value, because that is where
-    the operator already put it: "member 12345" is a member_id, "account number
-    22887" is an account_number. Naming from context rather than from a fixed
-    vocabulary is what lets this work on the next tenant's wording.
+    The name comes from the words in front of the value, where the operator
+    already put it: "member 12345" is a member_id, "account number 22887" is an
+    account_number. Naming from context instead of from a fixed vocabulary is
+    what lets this work on the next tenant's wording.
     """
     tokens = list(_TOKEN.finditer(goal))
     words = [t.group(0) for t in tokens]
@@ -134,8 +132,8 @@ def infer_bindings(goal: str) -> list[_Binding]:
 
 
 def _is_value(raw: str, literal: str) -> bool:
-    # Quoted strings are values because the operator marked them as such;
-    # anything else needs a digit in it to distinguish "12345" from "member".
+    # Quoted strings are values because the operator marked them as such.
+    # Anything else needs a digit to tell "12345" apart from "member".
     if _QUOTED.match(raw):
         return len(literal) >= 1
     return bool(_HAS_DIGIT.search(literal)) and len(literal) >= 2
@@ -159,8 +157,8 @@ def _name_for(before: Sequence[str], literal: str) -> str:
     noun = nouns[0]
     if qualifier:
         return f"{noun}_{qualifier}"
-    # A bare number after a noun is an identifier in every back-office app worth
-    # automating; naming it `member` alone reads as the member record itself.
+    # A bare number after a noun is an id in these back-office apps; naming it
+    # `member` alone would read as the member record itself.
     if literal.isdigit():
         return f"{noun}_id"
     return noun
@@ -189,8 +187,8 @@ def _slug(word: str) -> str:
 def _sub(text: str | None, bindings: Iterable[_Binding], where: str) -> str | None:
     """Replace whole-token occurrences of each literal with its placeholder.
 
-    Bounded on both sides so member 12345 does not rewrite the middle of
-    account 123456, and so a literal cannot corrupt an unrelated numeric id.
+    Bounded on both sides so member 12345 does not rewrite the middle of account
+    123456, and so a literal cannot corrupt an unrelated numeric id.
     """
     if not text:
         return text
@@ -206,9 +204,9 @@ def _sub(text: str | None, bindings: Iterable[_Binding], where: str) -> str | No
 
 
 def _sub_targets(targets: TargetSet | None, bindings: Iterable[_Binding], where: str) -> TargetSet | None:
-    """Parameterise target values too, including the rejected candidates.
+    """Parameterize target values too, including the rejected candidates.
 
-    A link whose accessible name *is* the member id has to be templated or the
+    A link whose accessible name is the member id has to be templated, or the
     artifact only ever finds that one member. Rejected candidates get the same
     treatment so the record of what was considered stays readable.
     """
@@ -238,10 +236,10 @@ def record(
     app_variant: str | None = None,
     recorded_by: str = "discovery-agent",
 ) -> Capability:
-    """Build a parameterised Capability from one successful run.
+    """Build a parameterized Capability from one successful run.
 
     The result is a draft: `approved` stays false, because a flow that has run
-    exactly once against one member is evidence of nothing yet.
+    once against one member is not evidence of anything yet.
     """
     actions = [_coerce(a) for a in trajectory]
     bindings = infer_bindings(goal)
@@ -264,10 +262,10 @@ def record(
     outputs = _outputs(actions)
 
     # The goal is rewritten with the same placeholders so the description does
-    # not carry a real member id, but only for parameters the trajectory
-    # actually used: a literal that appeared in the prose and nowhere else is
-    # not a parameter, and a placeholder with no param behind it is a bug. The
-    # copies keep this pass from counting as usage whatever order it runs in.
+    # not carry a real member id, but only for parameters the trajectory used:
+    # a literal that appeared in the prose and nowhere else is not a parameter,
+    # and a placeholder with no param behind it is a bug. The copies keep this
+    # pass from marking bindings as used, whatever order it runs in.
     used = [_Binding(b.name, b.literal) for b in bindings if b.used]
     description = _sub(goal.strip(), used, "description") or goal.strip()
 
@@ -290,8 +288,8 @@ def _to_step(index: int, action: RecordedAction, bindings: list[_Binding]) -> St
     where = f"step[{index}]"
     checkpoint = action.checkpoint
     if checkpoint is not None:
-        # Checkpoints carry the same literals as the steps they guard, and an
-        # unparameterised one asserts the recorded member on every replay.
+        # Checkpoints carry the same literals as the steps they guard, so one
+        # left unparameterized asserts the recorded member on every replay.
         checkpoint = replace(
             checkpoint, value=_sub(checkpoint.value, bindings, f"{where}.checkpoint") or checkpoint.value
         )
@@ -333,9 +331,9 @@ def _capability_name(goal: str, bindings: Sequence[_Binding]) -> str:
 def _coerce(item: RecordedAction | Step | dict[str, Any]) -> RecordedAction:
     """Accept whatever the discovery loop emits.
 
-    The agent loop is a separate component; pinning it to one class would make
-    this the second place a step's shape is defined. Steps and plain dicts are
-    both accepted and normalised here instead.
+    The agent loop is a separate component, and pinning it to one class would
+    make this the second place a step's shape is defined. Steps and plain dicts
+    are both normalized here instead.
     """
     if isinstance(item, RecordedAction):
         return item
@@ -364,8 +362,8 @@ def _coerce(item: RecordedAction | Step | dict[str, Any]) -> RecordedAction:
 # --------------------------------------------------------------------------
 
 def save(capability: Capability, path: Path | str) -> Path:
-    """Write the artifact. Sorted, indented, newline-terminated: it is reviewed
-    in a diff, and a capability change is a change to what an agent may do."""
+    """Write the artifact: sorted, indented, newline-terminated, because it gets
+    reviewed in a diff and it decides what an agent is allowed to do."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
@@ -378,8 +376,8 @@ def load(path: Path | str) -> Capability:
     """Read an artifact back, refusing one this build cannot replay faithfully.
 
     The check is on the major version. A minor bump adds fields an older reader
-    can ignore; a major bump changes the meaning of one it already reads, and
-    replaying that against a live banking app is the failure worth preventing.
+    can ignore; a major bump changes the meaning of a field it already reads,
+    and replaying that against a live banking app is what this prevents.
     """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return capability_from_json(data)
@@ -414,13 +412,13 @@ def capability_from_json(data: dict[str, Any]) -> Capability:
 def _rule_from_json(d: dict[str, Any]) -> BusinessRule:
     """Read one business rule back.
 
-    Worth stating why this function has to exist at all: `save` serialises the
-    whole capability, but `load` rebuilds it field by field, so any field the
-    reader does not know about is dropped. That is not a read bug -- it becomes
-    a *write* bug the next time something loads and saves, which `approve` does.
-    An artifact silently loses the rules that distinguish "no such member" from
-    a crash, and the loss shows up much later as a mysterious failure. Any field
-    added to `Capability` has to be added here in the same change.
+    This function exists because `save` serializes the whole capability while
+    `load` rebuilds it field by field, so any field the reader does not know
+    about is dropped. The damage lands on the next load-then-save, which is what
+    `approve` does: the artifact silently loses the rules that tell "no such
+    member" apart from a crash, and that surfaces much later as a mysterious
+    failure. Any field added to `Capability` has to be added here too, in the
+    same change.
     """
     return BusinessRule(
         code=d["code"], when_text=d["when_text"],
@@ -465,7 +463,8 @@ def _targetset_from_json(d: dict[str, Any] | None) -> TargetSet | None:
 def _target_from_json(d: dict[str, Any]) -> Target:
     return Target(
         strategy=Strategy(d["strategy"]), value=d["value"], frame=d.get("frame"),
-        confidence=float(d.get("confidence", 0.0)), note=d.get("note", ""),
+        # accepts the pre-rename key so artifacts recorded earlier still load
+        durability=float(d.get("durability", d.get("confidence", 0.0))), note=d.get("note", ""),
     )
 
 
