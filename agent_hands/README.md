@@ -31,7 +31,7 @@ why `record` needs `ANTHROPIC_API_KEY` and `replay` does not.
 It is also checkable rather than asserted:
 
 ```bash
-grep -rn "anthropic\|ANTHROPIC" agent_hands/ | grep -v discover.py   # empty
+grep -rn "anthropic\|ANTHROPIC" agent_hands/*.py | grep -v discover.py   # empty
 ```
 
 If a change makes that command print something, replay can reach a model and the
