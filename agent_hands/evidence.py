@@ -1,24 +1,23 @@
 """Per-run evidence: what was attempted, what resolved it, what it saw.
 
-An automation that cannot explain a failure is an automation a bank will not
-run. The rule here is that a reviewer who was not present must be able to answer
-"why did this stop?" from the run directory alone, without re-running anything
-against production.
+A reviewer who was not there must be able to answer "why did this stop?" from
+the run directory alone, without re-running anything against production. A bank
+will not run automation that cannot explain a failure.
 
-Three artefacts, and the split is deliberate:
+Three files, split on purpose:
 
 - `run.jsonl` is append-only and flushed per line, so a process killed mid-step
-  still leaves the steps that came before it. A single JSON document would not
-  survive that, which is exactly when you need it most.
-- `result.json` is the ReplayResult, the same object the caller received. It is
-  written last and is the only file that means "this run is complete".
-- the failure artefacts are written once, at the point of failure, and pair a
+  still leaves the steps before it. A single JSON document would be truncated
+  in exactly the case you most need it.
+- `result.json` is the ReplayResult the caller received. It is written last, so
+  it is the only file that means "this run is complete".
+- the failure files are written once, at the point of failure, and pair a
   screenshot with the accessibility snapshot. The screenshot is what a person
-  sees; the snapshot is what the targeting layer saw. Most confusing failures
-  are a disagreement between the two, and you cannot spot that with either alone.
+  sees, the snapshot is what the targeting layer saw. Most confusing failures
+  are a disagreement between the two, which neither file shows alone.
 
-Text leaving this module goes through `policy.redact`. Screenshots cannot be,
-so the run directory is sensitive by construction and is treated as such.
+Text leaving this module goes through `policy.redact`. Screenshots cannot, so
+the run directory is sensitive by construction and treated that way.
 """
 
 from __future__ import annotations
@@ -34,14 +33,14 @@ from typing import Any, Callable, Iterator
 
 from .schema import ReplayResult, Step, Target, TargetSet
 
-# The evidence root sits beside the package rather than inside it: it is run
-# output, not source, and someone will eventually want to delete all of it.
+# The evidence root sits beside the package, not inside it. This is run output,
+# and someone will eventually want to delete all of it in one go.
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "evidence"
 
-# Capture happens after something has already gone wrong, usually with a person
-# or a caller's deadline waiting on the answer. A snapshot that blocks for the
-# default 30s turns one failed step into a timed-out run, so it gets its own
-# short budget and is allowed to come back empty.
+# Capture runs after something has already gone wrong, with a person or a
+# caller's deadline waiting on the answer. At the default 30s, one failed step
+# becomes a timed-out run, so the snapshot gets its own short budget and is
+# allowed to come back empty.
 SNAPSHOT_TIMEOUT_MS = 2000
 
 
@@ -50,11 +49,10 @@ SNAPSHOT_TIMEOUT_MS = 2000
 # --------------------------------------------------------------------------
 
 def _load_redactor() -> Callable[[Any], Any]:
-    """Bind to policy.redact, falling back to a conservative local rule.
+    """Bind to policy.redact, or fall back to a cruder local rule.
 
-    Evidence is worth writing even in a checkout where the policy layer is not
-    importable, so a missing policy degrades to over-redaction rather than to a
-    crash mid-run. The fallback is intentionally cruder than the real thing.
+    Evidence is worth writing even in a checkout where the policy layer will not
+    import, so a missing policy over-redacts instead of crashing mid-run.
     """
     try:
         from .policy import redact  # type: ignore[attr-defined]
@@ -66,8 +64,8 @@ def _load_redactor() -> Callable[[Any], Any]:
 def _fallback_redact(value: Any) -> Any:
     import re
 
-    # Same replacement tokens as the policy layer, so evidence reads identically
-    # whichever redactor was in force when the run happened.
+    # Same replacement tokens as the policy layer, so evidence reads the same
+    # whichever redactor was in force.
     patterns = (
         (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED:SSN]"),
         (re.compile(r"\b(?:\d[ -]?){13,19}\b"), "[REDACTED:PAN]"),
@@ -85,16 +83,16 @@ def _fallback_redact(value: Any) -> Any:
 
 
 def _apply(redactor: Callable[[Any], Any], payload: Any) -> Any:
-    """Redact a whole structure, whichever shape of redactor we were given.
+    """Redact a whole structure, whatever shape of redactor we were given.
 
-    The policy layer is written by someone else; it may redact a structure or
-    only a string. Rather than couple to one signature, try the structure and
-    fall back to walking it ourselves. A string-only redactor signals the
-    mismatch by TypeError or by reaching for a str method, hence both.
+    The policy layer belongs to someone else and may take a structure or only a
+    string. So hand it the structure, and if that fails, walk the structure here
+    and hand it strings. A string-only redactor rejects a dict with TypeError,
+    or with AttributeError when it reaches for a str method, hence both.
 
-    Nothing broader is caught: a redactor that fails on the strings themselves
-    still raises out of `_walk`, because unredacted evidence must not be written
-    quietly.
+    Nothing broader is caught. A redactor that fails on the strings themselves
+    still raises out of `_walk`, because evidence must never be written
+    unredacted and unnoticed.
     """
     try:
         return redactor(payload)
@@ -120,10 +118,10 @@ def _walk(redactor: Callable[[Any], Any], payload: Any) -> Any:
 class StepRecord:
     """The mutable half of a step line, filled in while the step runs.
 
-    Replay knows things at different moments: which strategy won is known after
-    the element is found, the checkpoint only after the action. Rather than make
-    the caller assemble a dict at the end (and lose it entirely if the step
-    raises), it mutates this and the recorder writes whatever is set.
+    Replay learns things at different moments: the winning strategy once the
+    element is found, the checkpoint only after the action. The caller mutates
+    this and the recorder writes whatever is set, so a step that raises still
+    leaves behind what was known before it did.
     """
 
     index: int
@@ -142,9 +140,9 @@ class StepRecord:
     def resolved_by(self, target: Target, *, after: list[Target] | None = None) -> None:
         """Record which strategy found the element, and which ones did not.
 
-        The failed attempts are the early warning: a flow that has quietly
-        slipped from role+name down to a DOM path still passes, but it is one
-        release away from not passing, and only the evidence says so.
+        The failures are the early warning. A flow that has quietly slipped from
+        role+name down to a DOM path still passes, but it is one release from
+        not passing, and only the evidence says so.
         """
         self.resolved = target
         self.attempted = list(after or [])
@@ -194,8 +192,8 @@ class Evidence:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         slug = _slug(capability)
         base = Path(root) if root else DEFAULT_ROOT
-        # The suffix is for concurrent replays of the same capability in the
-        # same second, which is the normal case once anything schedules this.
+        # The random suffix is for two replays of the same capability in the
+        # same second, which is normal once anything schedules this.
         run_dir = base / f"{stamp}_{slug}_{uuid.uuid4().hex[:6]}"
         ev = cls(run_dir, redactor)
         ev.event("run_started", capability=capability, params=params or {})
@@ -220,8 +218,8 @@ class Evidence:
     def step(self, step: Step) -> Iterator[StepRecord]:
         """Time one step and write its line whatever happens to it.
 
-        Exceptions are recorded and re-raised: the recorder's job is to observe
-        the run, never to change its control flow.
+        Exceptions are recorded and re-raised unchanged. The recorder observes
+        the run and must not alter its control flow.
         """
         record = StepRecord(
             index=step.index,
@@ -245,7 +243,7 @@ class Evidence:
             )
 
     def recovery(self, step_index: int, tactic: str, detail: str = "") -> None:
-        """A recoverable condition was handled. Silent recovery is a lie."""
+        """Record a handled recoverable condition, so no recovery goes unlogged."""
         self.event("recovery", index=step_index, tactic=tactic, detail=detail)
 
     def escalation(self, reason: str, question: str, answer: str | None = None) -> None:
@@ -263,9 +261,9 @@ class Evidence:
     ) -> dict[str, str]:
         """Screenshot plus accessibility snapshot at the point of failure.
 
-        Both are best-effort and neither may raise: this runs on a page that has
-        already misbehaved, and losing the rest of the evidence because the
-        screenshot failed would be the wrong trade.
+        Both are best effort and neither may raise. The page has already
+        misbehaved, and losing the rest of the evidence because the screenshot
+        failed is the wrong trade.
         """
         stem = f"step-{step_index:02d}-failure"
         written: dict[str, str] = {}
@@ -299,8 +297,8 @@ class Evidence:
     def finish(self, result: ReplayResult) -> ReplayResult:
         """Write result.json and stamp the run directory onto the result.
 
-        The caller gets the path back on the object it is already holding, so a
-        failure returned to an agent carries its own evidence pointer.
+        The path comes back on the object the caller already holds, so a failure
+        handed to an agent carries its own pointer to the evidence.
         """
         result.evidence_dir = str(self.dir)
         payload = _apply(self._redact, result.to_json())
@@ -316,11 +314,11 @@ class Evidence:
 # --------------------------------------------------------------------------
 
 def _snapshot_frames(page: Any) -> list[dict[str, Any]]:
-    """Accessibility tree per frame, because the target app is a frameset.
+    """One accessibility tree per frame, because the target app is a frameset.
 
-    Snapshotting only the top document on a frameset yields two empty frames and
-    tells the reviewer nothing. Playwright is duck-typed here rather than
-    imported so the recorder stays testable without a browser.
+    Snapshot only the top document of a frameset and you get two empty frames,
+    which tells the reviewer nothing. Playwright is duck-typed rather than
+    imported, so the recorder can be tested without a browser.
     """
     frames = list(getattr(page, "frames", None) or [page])
     out: list[dict[str, Any]] = []
@@ -337,11 +335,11 @@ def _snapshot_frames(page: Any) -> list[dict[str, Any]]:
 
 
 def _tree(frame: Any, page: Any) -> tuple[Any, str]:
-    """ARIA snapshot first; the legacy accessibility API only as a fallback.
+    """ARIA snapshot first, the older accessibility API only as a fallback.
 
-    `html` is tried after `body` because a frameset document has no body at all:
-    the top document of the target app waits out the full timeout on `body` and
-    then reports nothing, which is the one frame a reviewer looks at first.
+    `html` is tried after `body` because a frameset document has no body: the
+    app's top document waits out the full timeout on `body` and then reports
+    nothing, and that is the first frame a reviewer opens.
     """
     errors: dict[str, str] = {}
     for selector in ("body", "html"):

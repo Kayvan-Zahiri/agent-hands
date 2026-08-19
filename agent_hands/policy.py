@@ -1,38 +1,37 @@
 """What the automation is allowed to do, decided before it does it.
 
-The threat model is not a malicious agent. It is a well-meaning one acting on a
-page that changed underneath it, or on text an attacker put into a record
-precisely so that a model would read it as an instruction. Both produce the same
-failure: a plausible-looking action against the wrong thing. So the rules are
-structural, checked in this module before dispatch, and never negotiated in a
-prompt. A refusal that arrives after the click has landed is not a control, it is
-a log line.
+The agent is assumed to be well-meaning. The danger is that it acts on a page
+that changed underneath it, or on text an attacker planted in a record so that a
+model would read it as an instruction. Both end the same way, with a
+plausible-looking action against the wrong thing. So the rules are structural,
+checked here before dispatch, never negotiated in a prompt. A refusal that
+arrives after the click has landed is only a log line.
 
 Three gates, kept separate because they fail for different reasons and a reviewer
 needs to see which one fired:
 
-1. **Surface.** Host *and* path prefix. A capability recorded against member
-   search must not become a general purpose browser pointed at everything the
-   session cookie can reach, so the allowlist narrows the origin as well as
-   choosing it. Checked against the live URL, not against the artifact's
-   `entry_url`, because the artifact is data and data can be stale or supplied by
-   whoever filed the ticket.
+1. **Surface.** Host *and* path prefix. A capability recorded for member search
+   must not become a general browser pointed at everything the session cookie can
+   reach, so the allowlist narrows the origin as well as picking it. Checked
+   against the live URL rather than the artifact's `entry_url`, because the
+   artifact is data, and data can be stale or supplied by whoever filed the
+   ticket.
 2. **Action.** Which `ActionKind` values this lane permits. The useful case is a
-   read-only lane: the same artifact replayed for evidence gathering with the
-   writes disabled, rather than a second artifact to keep in step.
-3. **Risk.** Classified once, at record time, by a human who approved the
+   read-only lane: the same artifact replayed for evidence gathering with writes
+   turned off, instead of a second artifact to keep in step.
+3. **Risk.** Classified once, at record time, by the human who approved the
    artifact. `Risk.IRREVERSIBLE` is default-deny; see `_check_risk`.
 
-Separately, `redact` exists because evidence outlives the run. Screenshots, page
-text and URLs from a servicing screen carry account numbers, and once written to
-disk they are in scope for every control that covers the underlying data.
-Redaction is applied on the way to an artifact, a log or an evidence file, and
-*not* to the values returned to the caller: the caller asked for the balance and
-is entitled to it in memory. What nobody is entitled to is our copy on disk.
+`redact` exists because evidence outlives the run. Screenshots, page text and
+URLs from a servicing screen carry account numbers, and once on disk they fall
+under every control that covers the underlying data. Redaction applies on the way
+to an artifact, a log or an evidence file, and *not* to the values returned to
+the caller: the caller asked for the balance and is entitled to it in memory.
+Nobody is entitled to our copy on disk.
 
 The deliberate gap: this gates *what* runs, not *who* asked. Identity, per-caller
-scoping and an approvals audit trail belong to whatever calls this, and are
-listed as out of scope rather than half-built here.
+scoping and an approvals audit trail belong to whatever calls this, and are out
+of scope here rather than half-built.
 """
 
 from __future__ import annotations
@@ -48,8 +47,8 @@ from .schema import ActionKind, Capability, Risk, Step
 class PolicyViolation(Exception):
     """Refusal to act.
 
-    Never caught by the retry path: a policy failure is not a transient
-    condition, and retrying it only breaks the rule more slowly.
+    Never caught by the retry path. A policy failure will not clear on its own,
+    so retrying it only breaks the rule more slowly.
     """
 
     def __init__(self, decision: "Decision | str") -> None:
@@ -61,8 +60,8 @@ class ApprovalRequired(PolicyViolation):
     """The action is legitimate but has not been signed off by anyone."""
 
 
-# Kept as an alias because refusal is the same event whichever name a caller
-# reaches for, and both names read correctly at the call site.
+# An alias: refusal is the same event under either name, and both read correctly
+# at the call site.
 PolicyRefusal = PolicyViolation
 
 
@@ -77,9 +76,9 @@ WILDCARD = "*"
 class AppAllowance:
     """One application the automation may drive, narrowed to part of its surface.
 
-    `host` includes the port, because that is what separates the fixture from
-    anything else on loopback and, in production, the servicing host from the
-    admin host on the same box.
+    `host` includes the port. That is what separates the fixture from anything
+    else on loopback, and in production the servicing host from the admin host on
+    the same box.
     """
 
     host: str
@@ -94,7 +93,7 @@ class AppAllowance:
             if prefix == WILDCARD or path == prefix:
                 return True
             # "/" is exact-match only. As a prefix it would allow the whole
-            # origin, which is the opposite of what listing prefixes is for.
+            # origin, defeating the point of listing prefixes at all.
             if prefix != "/" and path.startswith(prefix):
                 return True
         return False
@@ -105,7 +104,7 @@ class Decision:
     """Why a request was allowed or refused, and which gate decided.
 
     Shaped for the replay engine, which reads `.allowed` and `.reason` off
-    whatever the policy layer hands back.
+    whatever the policy layer returns.
     """
 
     allowed: bool
@@ -136,14 +135,14 @@ class Policy:
     max_steps: int = 60
     name: str = "default"
 
-    # Present when a human is reachable. Its presence is what turns a refusal
-    # into a question; absent it, an irreversible step fails closed. Any object
-    # with `approve(capability=..., step=...) -> bool` will do, which is what the
-    # operator console in escalation.py provides.
+    # Set when a human is reachable, which turns a refusal into a question.
+    # Without it an irreversible step fails closed. Any object with
+    # `approve(capability=..., step=...) -> bool` works, such as the operator
+    # console in escalation.py.
     approver: Any = None
     # Optional live-URL source, e.g. `lambda: page.url`. With it, every step is
-    # surface-checked against where the browser actually is rather than against
-    # where the artifact says it should be. See `check_step`.
+    # surface-checked against where the browser actually is instead of where the
+    # artifact says it should be. See `check_step`.
     url_provider: Callable[[], str] | None = None
     notes: list[str] = field(default_factory=list)
 
@@ -151,8 +150,8 @@ class Policy:
 
     @classmethod
     def for_host(cls, url: str, **kw: Any) -> "Policy":
-        """Allow one origin, whole. The permissive shortcut, for a tenant whose
-        surface has not been narrowed yet; prefer listing path prefixes."""
+        """Allow one origin, whole. A shortcut for a tenant whose surface has not
+        been narrowed yet; prefer listing path prefixes."""
         return cls(apps=(AppAllowance(host=urlparse(url).netloc),), **kw)
 
     def read_only(self) -> "Policy":
@@ -194,20 +193,18 @@ class Policy:
     def _check_risk(self, step: Step, capability: Capability | None, confirm: bool) -> Decision:
         """Gate the one class of action a person has to undo by hand.
 
-        Irreversible needs two independent facts, asserted by different people at
-        different times, neither of which implies the other. `capability.approved`
-        says a reviewer read the recording and agreed the flow is correct: a
-        judgement about the script, made once, possibly months ago. `confirm` says
-        the caller of *this* invocation, with today's parameters, is taking
-        responsibility for the write. An agent looping over a thousand members has
-        approval on the artifact and still must not be able to post a thousand
+        An irreversible step needs two separate facts. `capability.approved` says
+        a reviewer read the recording and agreed the flow is correct, a judgment
+        about the script made once, maybe months ago. `confirm` says the caller of
+        *this* invocation, with today's parameters, is taking responsibility for
+        the write. Neither implies the other: an agent looping over a thousand
+        members has approval on the artifact and still must not post a thousand
         adjustments by accident.
 
-        Defaulting to refuse rather than prompt is deliberate: replay may run
-        unattended, and a gate whose default depends on somebody being at a
-        keyboard is not a gate. When an approver is configured the refusal becomes
-        a question instead, which is the only thing that should ever substitute
-        for the caller's confirm.
+        The default is refuse rather than prompt, deliberately: replay may run
+        unattended, so a gate that depends on somebody being at a keyboard
+        protects nothing. A configured approver turns the refusal into a question,
+        and that is the only substitute for the caller's confirm.
         """
         if step.risk is not Risk.IRREVERSIBLE:
             return Decision(True, "risk", f"{step.risk.value} action needs no confirmation")
@@ -235,8 +232,8 @@ class Policy:
     ) -> Decision:
         """Decide one step. `url` is where the step will act, resolved already.
 
-        For NAVIGATE that is the destination; for anything else it is the page the
-        automation is currently on, so a flow that has drifted onto an unlisted
+        For NAVIGATE that is the destination. For anything else it is the page the
+        automation is on right now, so a flow that has drifted onto an unlisted
         screen stops there instead of typing into it.
         """
         for decision in (
@@ -251,11 +248,11 @@ class Policy:
     def check_step(self, capability: Capability, step: Step, url: str | None = None) -> Decision:
         """The replay engine's entry point. Argument order matches its protocol.
 
-        Replay does not pass a URL, so one is resolved in this order: the caller's
+        Replay passes no URL, so one is resolved in this order: the caller's
         argument, the live page via `url_provider`, the step's own destination,
         then the artifact's entry URL. Only the first two prove where the browser
-        actually is; wire `url_provider` in production and the surface gate becomes
-        continuous rather than a check at the door.
+        actually is, so wire up `url_provider` in production and the surface gate
+        checks every step instead of only the first.
         """
         resolved = url or self._live_url() or step.url or capability.entry_url
         return self.check(step, resolved or "", capability)
@@ -267,7 +264,7 @@ class Policy:
         capability: Capability | None = None,
         confirm: bool = False,
     ) -> Decision:
-        """`check`, but a caller cannot forget to read a return value it never gets."""
+        """`check`, but it raises, so a caller cannot forget to read the result."""
         decision = self.check(step, url, capability, confirm)
         if not decision.allowed:
             raise (ApprovalRequired if decision.gate == "risk" else PolicyViolation)(decision)
@@ -296,9 +293,10 @@ class Policy:
     def should_escalate(self, capability: Capability, code: str) -> bool:
         """Whether a failure is worth a person's time.
 
-        A business outcome is an answer, not a problem, so it never escalates. A
-        policy refusal does not either: the answer is to change the policy or the
-        artifact, deliberately, not to ask an operator to wave it through.
+        A business outcome like "member not found" is an answer, so it never
+        escalates. Neither does a policy refusal: the fix there is to change the
+        policy or the artifact deliberately, not to ask an operator to wave it
+        through.
         """
         never = {"member_not_found", "validation_rejected", "blocked_by_policy"}
         return code not in never
@@ -315,8 +313,8 @@ class Policy:
 ALL_ACTIONS: frozenset[ActionKind] = frozenset(ActionKind)
 
 # The lane the fixture runs in. /admin is reachable from the nav frame and is
-# deliberately absent, so a misrecorded or drifting flow is refused rather than
-# handed an administration screen.
+# left out on purpose, so a misrecorded or drifting flow gets refused instead of
+# an admin screen.
 FIXTURE_POLICY = Policy(
     apps=(
         AppAllowance(
@@ -334,19 +332,19 @@ FIXTURE_POLICY = Policy(
 # redaction
 # --------------------------------------------------------------------------
 
-# Ordered, and the order matters: the earlier patterns consume the digits the
-# later, broader ones would mislabel. Placeholders contain no digits, so a later
-# pass cannot match inside one.
+# Order matters: the earlier patterns consume the digits that the later, broader
+# ones would mislabel. Placeholders hold no digits, so a later pass cannot match
+# inside one.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
     ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
-    # 13 to 19 digits, optionally grouped. No Luhn check: a Luhn failure means
-    # "probably not a card", and shipping regulated data on a probability is the
-    # wrong trade when the cost of over-redacting is a slightly harder log.
+    # 13 to 19 digits, optionally grouped. No Luhn check: a Luhn failure only
+    # means "probably not a card", and over-redacting costs a slightly harder log
+    # while under-redacting writes out a real card number.
     ("PAN", re.compile(r"\b\d(?:[ -]?\d){12,18}\b")),
     ("PHONE", re.compile(r"\b(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b")),
-    # Anything sitting next to an identifier caption. This is what catches the
-    # fixture's five digit member IDs, in page text and in "?member_id=12345".
+    # Anything sitting next to an identifier caption. This catches the fixture's
+    # five digit member IDs, in page text and in "?member_id=12345".
     ("ACCOUNT", re.compile(
         r"(?i)\b(?:member|account|acct|customer|routing|iban|card)[ _-]?"
         r"(?:id|no|num|number|#)?\s*[:=#]?\s*\d(?:[ -]?\d){3,18}\b")),
@@ -358,9 +356,9 @@ _CAPTION = re.compile(r"(?i)^((?:member|account|acct|customer|routing|iban|card)
                       r"(?:id|no|num|number|#)?\s*[:=#]?\s*)")
 
 # A value under one of these keys is sensitive whatever it looks like. In a
-# manifest the caption and the value sit in different places, so the keyed text
-# rule cannot see them together and would let a bare "22887" through. A field
-# named `password` is never worth pattern-matching: the name is the signal.
+# manifest the caption and the value sit in different places, so the text rule
+# never sees them together and a bare "22887" would slip through. A field named
+# `password` needs no pattern at all; the name is enough.
 _SENSITIVE_KEYS = frozenset({
     "password", "passwd", "pin", "ssn", "tax_id", "secret", "token", "api_key",
     "authorization", "cookie", "session_id", "member_id", "account_id",
@@ -371,19 +369,18 @@ _SENSITIVE_KEYS = frozenset({
 def redact(text: Any) -> Any:
     """Scrub identifiers out of anything about to be persisted.
 
-    Takes a string and returns a string. It also accepts a structure and walks
-    it, because the evidence writer hands whole payloads to whatever redactor it
-    is given: a version of this that quietly returned a dict untouched would look
-    like it was working and would write member IDs to disk.
+    Takes a string, returns a string. It also accepts a structure and walks it,
+    because the evidence writer hands whole payloads to whatever redactor it is
+    given, and a version that quietly returned a dict untouched would look like it
+    was working while writing member IDs to disk.
 
-    Applied to evidence files, artifact notes and log lines; not applied to the
-    outputs handed back to the caller in memory, which is the point of the
-    distinction. This system is allowed to read regulated data. It is not allowed
-    to leave copies of it lying around.
+    Applied to evidence files, artifact notes and log lines, but not to the
+    outputs handed back to the caller in memory. Reading regulated data is
+    allowed; leaving copies of it on disk is not.
 
     Errs toward over-redaction, and keeps the caption on keyed matches
-    ("Member ID: [REDACTED:ACCOUNT]"), because a redacted log still has to be
-    attachable to a ticket and readable by the person holding it.
+    ("Member ID: [REDACTED:ACCOUNT]") so a redacted log can still be attached to a
+    ticket and read by the person holding it.
     """
     if not isinstance(text, str):
         return redact_json(text)
@@ -404,8 +401,8 @@ def _placeholder(matched: str, label: str) -> str:
 def redact_json(value: Any) -> Any:
     """`redact` over a structure, for artifacts and evidence manifests.
 
-    Dictionary keys are left alone -- a key is a field name, and redacting it
-    would destroy the shape of the document for no gain -- but values under an
+    Dictionary keys are left alone, since a key is a field name and redacting it
+    would wreck the shape of the document for no gain. Values under an
     identifier-shaped key are replaced whole.
     """
     if isinstance(value, str):
@@ -432,9 +429,9 @@ def redacted_lines(lines: Iterable[str]) -> list[str]:
 def classify_risk(action: str, *, url: str = "", label: str = "") -> Risk:
     """Best-effort risk class at record time, for a human to correct.
 
-    A suggestion, not a safety mechanism. The safety mechanism is that a person
-    reads the artifact before approving it; this exists so the common cases are
-    already right and the reviewer's attention lands on the ones that are not.
+    The real safety mechanism is a person reading the artifact before approving
+    it. This only gets the common cases right up front, so the reviewer's
+    attention lands on the ones it got wrong.
     """
     text = f"{label} {url}".lower()
     if action in ("read", "wait_for", "navigate"):
@@ -447,8 +444,8 @@ def classify_risk(action: str, *, url: str = "", label: str = "") -> Risk:
         if any(word in text for word in writing):
             return Risk.IRREVERSIBLE
         # A search button is a click that writes nothing. Defaulting clicks to
-        # REVERSIBLE keeps the approval prompt for the cases that deserve it; a
-        # reviewer who disagrees edits the artifact.
+        # REVERSIBLE saves the approval prompt for the cases that deserve it, and
+        # a reviewer who disagrees edits the artifact.
         return Risk.REVERSIBLE
     return Risk.REVERSIBLE
 

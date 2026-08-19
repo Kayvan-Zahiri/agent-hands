@@ -129,8 +129,8 @@ Recovery is bounded and named, never generic retry: three attempts per step, one
 session re-entry, three flow re-entries. Each is written to the evidence log,
 because silent recovery is how a system degrades for months unnoticed.
 
-The full behaviour. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 16/16 passing, alongside 70 unit tests
+The full behavior. `tests/test_replay.py` drives the engine against the live
+fixture and asserts the outcome of each, 16/16 passing, alongside 80 unit tests
 covering perception, policy and escalation:
 
 | case | outcome | note |
@@ -191,7 +191,7 @@ The recorded primary strategy missed, because their caption is different, and
 the fallback caught it. The `result.json` says `success`, and **only the
 evidence file shows the degradation**.
 
-A run that passes on a 0.4-confidence fallback is one release away from not
+A run that passes on a 0.4-durability fallback is one release away from not
 passing, so degradation is surfaced rather than left implicit: `Resolution`
 exposes `degraded`, the step's evidence line carries `degraded_to_rank`, and
 resolving below the primary logs a warning naming both strategies.
@@ -229,7 +229,7 @@ page is handed over.
 
 **Ownership is explicit and enforced.** `AUTOMATION -> OPERATOR -> RESUMING ->
 AUTOMATION`, with illegal transitions raising. `RESUMING` is a distinct state
-rather than a flavour of automation: between the handback and a verified
+rather than a flavor of automation: between the handback and a verified
 checkpoint, nobody may act, because neither party knows where the page is. An
 `OwnedPage` wrapper refuses calls from whichever party is not the current owner,
 so a stale reference raises instead of quietly typing into a screen a person is
@@ -282,7 +282,7 @@ automatic yes would leave the escalation path untested in exactly the way that
 matters.
 
 One bug worth naming, because it was silent and it was a *safety* bug. `save`
-serialises the whole capability but `load` rebuilt it field by field, so a field
+serializes the whole capability but `load` rebuilt it field by field, so a field
 the reader did not know about was dropped. `approve` loads and saves, so
 approving an artifact **deleted its business rules**, and the loss showed up
 later as an unrelated-looking checkpoint failure. Any field added to

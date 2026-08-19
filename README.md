@@ -66,7 +66,7 @@ member_id=abcde  exit=3  business_outcome  invalid_identifier
 | `agent_hands/schema.py` | the capability artifact and the result contract |
 | `agent_hands/perception.py` | accessibility-tree observation, ranked targeting |
 | `agent_hands/discover.py` | the model-driven recording loop (the only LLM code) |
-| `agent_hands/recorder.py` | trajectory to artifact, including parameterisation |
+| `agent_hands/recorder.py` | trajectory to artifact, including parameterization |
 | `agent_hands/replay.py` | deterministic execution. imports nothing that reaches a model |
 | `agent_hands/policy.py` | surface, action and risk gates; redaction |
 | `agent_hands/escalation.py` | session ownership and the handoff to a person |
@@ -119,15 +119,15 @@ failures are a disagreement between the two.
 
 ## Tests
 
-86 in total, all against the real fixture with a real browser. No mocked pages:
+96 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 70 unit tests: perception (needs the fixture up), policy, escalation
+# 80 unit tests: perception (needs the fixture up), policy, escalation, cli
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
-# 16 end-to-end behaviours; starts its own fixture if one is not running
+# 16 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 

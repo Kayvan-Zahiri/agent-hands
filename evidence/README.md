@@ -36,7 +36,7 @@ that cannot be attached to a ticket.
 | `...233224Z_member-lookup_5dfaee` | success | the happy path |
 | `...234201Z_member-lookup_21da9b` | business_outcome `member_not_found` | the app answered "no". not a failure |
 | `...234229Z_member-lookup_86898f` | business_outcome `invalid_identifier` | input rejected by the app's own validation |
-| `...234652Z_member-lookup_403428` | success, **degraded** | the same artifact against a second tenant. the recorded primary strategy missed and a 0.4-confidence fallback caught it. `result.json` says success; only `run.jsonl` shows the slide |
+| `...234652Z_member-lookup_403428` | success, **degraded** | the same artifact against a second tenant. the recorded primary strategy missed and a 0.4-durability fallback caught it. `result.json` says success; only `run.jsonl` shows the slide |
 | `...234414Z_member-lookup-stale_542a17` | failure | a recording that no longer matches the app. all four strategies missed; screenshot, accessibility snapshot and intervention packet captured |
 
 The failure run is the one worth opening. `step-02-failure.png` is what a person
@@ -46,7 +46,7 @@ Most confusing failures are a disagreement between those two.
 ## What the recording proves
 
 The artifact recorded from `member 12345` replays on members the model never
-saw, because the literal was parameterised at record time:
+saw, because the literal was parameterized at record time:
 
 ```
 member_id=12345 (recorded with)  success

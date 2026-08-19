@@ -1,4 +1,4 @@
-"""The behaviour suite. Every case asserts an outcome, not just that it ran.
+"""The behavior suite. Every case asserts an outcome, not just that it ran.
 
 This is the file that found every real bug in this project, so it is worth
 saying what it is for. It is not unit tests of the helpers; it drives the whole
