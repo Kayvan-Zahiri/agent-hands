@@ -2,13 +2,13 @@
   "schema_version": "1.0",
   "artifact_version": 1,
   "name": "meridian_balance_recorded",
-  "description": "Sign on as operator {operator} with [not recorded] [not recorded] at branch {branch}, then look up member {member_id} and read the savings balance",
+  "description": "Sign on as operator {operator} with {password} at branch {branch}, then look up member {member_id} and read the savings balance",
   "app_id": "meridian-core",
   "app_variant": null,
   "entry_url": "https://web-sample.interface-hiring.com/signon",
   "approved": true,
   "recorded_by": "discovery-agent",
-  "recorded_at": "2026-08-20T21:54:10+00:00",
+  "recorded_at": "2026-08-20T23:06:22+00:00",
   "params": [
     {
       "name": "operator",
@@ -289,7 +289,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Sign on"
+      "note": "Submit sign on"
     },
     {
       "index": 5,
@@ -463,7 +463,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Search for member"
+      "note": "Search for the member"
     },
     {
       "index": 8,
@@ -547,7 +547,7 @@
             "value": "cell[19]",
             "frame": "main",
             "durability": 0.4,
-            "note": "index 19 of 63 cell controls in the frame; breaks if the page reorders"
+            "note": "index 19 of 79 cell controls in the frame; breaks if the page reorders"
           },
           {
             "strategy": "dom_path",

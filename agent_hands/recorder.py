@@ -287,9 +287,17 @@ def record(
     # pass from marking bindings as used, whatever order it runs in.
     used = [_Binding(b.name, b.literal) for b in bindings if b.used]
     description = _sub(goal.strip(), used, "description") or goal.strip()
-    # The goal is prose a person wrote, and it may name the credential too.
-    for literal in secrets.values():
-        description = description.replace(literal, "[not recorded]")
+    # The goal is prose a person wrote, and it may name the credential too. Use
+    # the parameter's own placeholder rather than a marker, so the sentence still
+    # reads: "with password {password}". When the prose word and the value are
+    # the same string -- "with password password" -- both get replaced and the
+    # repeat is collapsed, which is the only reason this needs two lines.
+    for name, literal in secrets.items():
+        description = description.replace(literal, "{" + name + "}")
+    for name in secrets:
+        token = "{" + name + "}"
+        while token + " " + token in description:
+            description = description.replace(token + " " + token, token)
 
     return Capability(
         name=name or _capability_name(goal, bindings),
