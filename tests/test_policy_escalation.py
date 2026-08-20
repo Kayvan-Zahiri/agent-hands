@@ -338,8 +338,10 @@ class TestInterventionRequest(EscalationCase):
         self.assertEqual(request.step_action, "read")
         self.assertIs(request.reason, Reason.AUTH)
         self.assertTrue(request.url.startswith("http://127.0.0.1:8899/members/search"))
+        assert request.screenshot is not None
         self.assertTrue(Path(request.screenshot).exists())
         self.assertEqual(request.checkpoint, {"kind": "text_present", "value": "Member Detail"})
+        assert request.expected is not None
         self.assertIn("text_present", request.expected)
         self.assertIn("Session Expired", request.render())
 
@@ -374,6 +376,7 @@ class TestTakeover(EscalationCase):
         self.assertIn("Member Detail", self.page.content())     # the same object moved
         self.assertIs(record.decision, OperatorDecision.RESUME)
         self.assertNotIn("12345", record.note)                  # captured, then redacted
+        assert record.screenshot_after is not None
         self.assertTrue(Path(record.screenshot_after).exists())
         self.assertNotIn("12345", (self.evidence / f"{request.id}-takeover.json").read_text())
 

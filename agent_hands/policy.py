@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
 
@@ -387,14 +388,14 @@ def redact(text: Any) -> Any:
     if not text:
         return text
     for label, pattern in _PATTERNS:
-        text = pattern.sub(lambda m, lbl=label: _placeholder(m.group(0), lbl), text)
+        text = pattern.sub(partial(_placeholder, label), text)
     return text
 
 
-def _placeholder(matched: str, label: str) -> str:
+def _placeholder(label: str, match: re.Match[str]) -> str:
     if label != "ACCOUNT":
         return f"[REDACTED:{label}]"
-    head = _CAPTION.match(matched)
+    head = _CAPTION.match(match.group(0))
     return f"{head.group(1)}[REDACTED:ACCOUNT]" if head else "[REDACTED:ACCOUNT]"
 
 

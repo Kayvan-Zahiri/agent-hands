@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from playwright.sync_api import Browser, Page, sync_playwright  # noqa: E402
+from playwright.sync_api import Browser, Frame, Page, Playwright, sync_playwright  # noqa: E402
 
 from agent_hands.perception import (  # noqa: E402
     Node, Observation, TargetResolutionError, derive_targets, observe,
@@ -86,6 +86,15 @@ def _open(browser: Browser, url: str) -> Page:
     return page
 
 
+def _frame(obs: Observation, node: Node) -> Frame:
+    """The frame a node was seen in. `frame_for` returns None when a frame has
+    gone since the observation, which here means a broken fixture, not a case
+    the test is about."""
+    frame = obs.frame_for(node)
+    assert frame is not None, f"no frame {node.frame!r} in the observation"
+    return frame
+
+
 def _detail(page: Page) -> Observation:
     """Walk the flow to the detail screen, rather than loading its URL.
 
@@ -115,6 +124,8 @@ class PerceptionTest(unittest.TestCase):
 
     fixture: Fixture
     browser: Browser
+    _fixture_cm: Fixture
+    _pw: Playwright
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -193,7 +204,7 @@ class PerceptionTest(unittest.TestCase):
     def test_field_is_targeted_by_caption_not_by_id(self) -> None:
         obs = observe(self.page)
         field = _search_field(obs)
-        targets = derive_targets(field, obs.frame_for(field))
+        targets = derive_targets(field, _frame(obs, field))
 
         self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
         self.assertEqual("Member ID", targets.primary.value)
@@ -210,7 +221,7 @@ class PerceptionTest(unittest.TestCase):
     def test_resolve_lands_on_the_real_input(self) -> None:
         obs = observe(self.page)
         field = _search_field(obs)
-        detail = resolve_detail(self.page, derive_targets(field, obs.frame_for(field)))
+        detail = resolve_detail(self.page, derive_targets(field, _frame(obs, field)))
 
         self.assertEqual(0, detail.rank)
         self.assertFalse(detail.degraded)
@@ -233,7 +244,7 @@ class PerceptionTest(unittest.TestCase):
         }""")
         obs = observe(self.page)
         node = obs.find(role="link", name="Search", frame="content")[0]
-        targets = derive_targets(node, obs.frame_for(node))
+        targets = derive_targets(node, _frame(obs, node))
 
         self.assertIs(Strategy.ROLE_NAME_IN_REGION, targets.primary.strategy)
         self.assertEqual("content", targets.primary.frame)
@@ -243,7 +254,7 @@ class PerceptionTest(unittest.TestCase):
     def test_point_is_recorded_but_never_offered_as_a_candidate(self) -> None:
         obs = observe(self.page)
         field = _search_field(obs)
-        targets = derive_targets(field, obs.frame_for(field))
+        targets = derive_targets(field, _frame(obs, field))
         strategies = [t.strategy for t in targets.candidates]
         self.assertNotIn(Strategy.POINT, strategies)
         point = [t for t in targets.rejected if t.strategy is Strategy.POINT]
@@ -279,6 +290,11 @@ class VariantTest(unittest.TestCase):
     renames the caption rather than restructuring the form.
     """
 
+    fixture: Fixture
+    browser: Browser
+    _fixture_cm: Fixture
+    _pw: Playwright
+
     @classmethod
     def setUpClass(cls) -> None:
         cls._fixture_cm = Fixture("westfield")
@@ -296,7 +312,7 @@ class VariantTest(unittest.TestCase):
         page = _open(self.browser, self.fixture.url)
         obs = observe(page)
         field = _search_field(obs)
-        targets = derive_targets(field, obs.frame_for(field))
+        targets = derive_targets(field, _frame(obs, field))
         self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
         self.assertEqual("Account Number", targets.primary.value)
         self.assertEqual("member_id", resolve(page, targets).get_attribute("name"))
@@ -332,7 +348,7 @@ def demo() -> None:
         print(obs.render())
 
         field = _search_field(obs)
-        targets = derive_targets(field, obs.frame_for(field))
+        targets = derive_targets(field, _frame(obs, field))
         print()
         print("=" * 72)
         print("TARGETS for the unnamed textbox in frame 'content'")
@@ -369,6 +385,12 @@ class RecordedOutputTest(unittest.TestCase):
     nothing left to enforce. Testing the pieces separately cannot see that, which
     is why this drives the real path instead.
     """
+
+    fixture: Fixture
+    browser: Browser
+    _fixture_cm: Fixture
+    _pw: Playwright
+    policy: Policy
 
     @classmethod
     def setUpClass(cls) -> None:
