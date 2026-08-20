@@ -91,6 +91,12 @@
       "when_text": "SUPERVISOR OVERRIDE REQUIRED",
       "message": "this function needs a supervisor to sign on",
       "terminal": false
+    },
+    {
+      "code": "validation_failed",
+      "when_text": "could not be validated",
+      "message": "the application rejected the values as entered",
+      "terminal": false
     }
   ],
   "steps": [
@@ -587,7 +593,7 @@
       "risk": "irreversible",
       "checkpoint": {
         "kind": "text_present",
-        "value": "Member No.:"
+        "value": "CHANGES SAVED"
       },
       "extracts": null,
       "note": ""

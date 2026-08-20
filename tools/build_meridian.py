@@ -49,6 +49,8 @@ RULES = [
                  "the application refused the transaction as entered"),
     BusinessRule("supervisor_required", "SUPERVISOR OVERRIDE REQUIRED",
                  "this function needs a supervisor to sign on", terminal=False),
+    BusinessRule("validation_failed", "could not be validated",
+                 "the application rejected the values as entered", terminal=False),
 ]
 
 SIGNON_PARAMS = [
@@ -284,17 +286,24 @@ def build(pg) -> list[Capability]:
                  risk=Risk.REVERSIBLE),
             Step(8, ActionKind.CLICK, target=_control(pg, "button", "Continue"),
                  risk=Risk.REVERSIBLE,
-                 checkpoint=Checkpoint("text_present", "CONFIRM")),
+                 checkpoint=Checkpoint("text_present", "CONFIRM NEW SHARE")),
             Step(9, ActionKind.CLICK, target=TargetSet(candidates=[Target(
                 strategy=Strategy.ROLE_NAME, value='button "Open Share"', frame=None,
                 durability=0.95, note="on the confirmation screen")]),
                 risk=Risk.IRREVERSIBLE,
-                checkpoint=Checkpoint("text_present", "TRANSACTION COMPLETE")),
+                checkpoint=Checkpoint("text_present", "NEW SHARE ESTABLISHED")),
+            Step(10, ActionKind.READ, target=_labelled_cell("Confirmation:"),
+                 extracts="confirmation", risk=Risk.SAFE),
+            Step(11, ActionKind.READ, target=_labelled_cell("New Share ID:"),
+                 extracts="new_share_id", risk=Risk.SAFE),
         ],
         [Param("member_id", "string", True, "member number", DEMO_MEMBER),
          Param("share_type", "string", True, "S0001, S0070, MMKT or CERT", "MMKT"),
-         Param("deposit", "string", True, "opening deposit", "5.00")],
-        []))
+         # The application refuses less than five dollars, which is a business
+         # answer rather than a fault, and there is a rule for it above.
+         Param("deposit", "string", True, "opening deposit, at least 5.00", "5.00")],
+        [Output("confirmation", "string", "the confirmation number the app issued"),
+         Output("new_share_id", "string", "the id of the account it created")]))
 
     # 6. update member information ------------------------------------------
     pg.goto(HOST + f"/members/{DEMO_MEMBER}/update", wait_until="load")
@@ -311,9 +320,12 @@ def build(pg) -> list[Capability]:
                  risk=Risk.REVERSIBLE),
             Step(8, ActionKind.TYPE, target=fields["Mailing Address:"], text="{address}",
                  risk=Risk.REVERSIBLE),
+            # No review step: unlike every other write on this target, Save
+            # Changes posts immediately. Checking for the member record would
+            # pass on the form itself and report success without saving.
             Step(9, ActionKind.CLICK, target=_control(pg, "button", "Save Changes"),
                  risk=Risk.IRREVERSIBLE,
-                 checkpoint=Checkpoint("text_present", "Member No.:")),
+                 checkpoint=Checkpoint("text_present", "CHANGES SAVED")),
         ],
         [Param("member_id", "string", True, "member number", DEMO_MEMBER),
          Param("email", "string", True, "new email address"),
@@ -340,9 +352,9 @@ def build(pg) -> list[Capability]:
             # which is what makes this safe to demonstrate against a shared host.
             Step(9, ActionKind.CLICK, target=_control(pg, "button", "Continue"),
                  risk=Risk.REVERSIBLE,
-                 checkpoint=Checkpoint("text_present", "CONFIRM")),
+                 checkpoint=Checkpoint("text_present", "CONFIRM ACCOUNT HOLD")),
             Step(10, ActionKind.CLICK, target=TargetSet(candidates=[Target(
-                strategy=Strategy.ROLE_NAME, value='button "Place Hold"', frame=None,
+                strategy=Strategy.ROLE_NAME, value='button "Apply Hold"', frame=None,
                 durability=0.95, note="on the confirmation screen")]),
                 risk=Risk.IRREVERSIBLE,
                 checkpoint=Checkpoint("text_present", "TRANSACTION COMPLETE")),

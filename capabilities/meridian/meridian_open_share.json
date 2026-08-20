@@ -49,11 +49,22 @@
       "name": "deposit",
       "type": "string",
       "required": true,
-      "description": "opening deposit",
+      "description": "opening deposit, at least 5.00",
       "example": "5.00"
     }
   ],
-  "outputs": [],
+  "outputs": [
+    {
+      "name": "confirmation",
+      "type": "string",
+      "description": "the confirmation number the app issued"
+    },
+    {
+      "name": "new_share_id",
+      "type": "string",
+      "description": "the id of the account it created"
+    }
+  ],
   "business_rules": [
     {
       "code": "member_not_found",
@@ -83,6 +94,12 @@
       "code": "supervisor_required",
       "when_text": "SUPERVISOR OVERRIDE REQUIRED",
       "message": "this function needs a supervisor to sign on",
+      "terminal": false
+    },
+    {
+      "code": "validation_failed",
+      "when_text": "could not be validated",
+      "message": "the application rejected the values as entered",
       "terminal": false
     }
   ],
@@ -522,7 +539,7 @@
       "risk": "reversible",
       "checkpoint": {
         "kind": "text_present",
-        "value": "CONFIRM"
+        "value": "CONFIRM NEW SHARE"
       },
       "extracts": null,
       "note": ""
@@ -547,9 +564,53 @@
       "risk": "irreversible",
       "checkpoint": {
         "kind": "text_present",
-        "value": "TRANSACTION COMPLETE"
+        "value": "NEW SHARE ESTABLISHED"
       },
       "extracts": null,
+      "note": ""
+    },
+    {
+      "index": 10,
+      "action": "read",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "dom_path",
+            "value": "xpath=//td[normalize-space(.)=\"Confirmation:\"]/following-sibling::td[1]",
+            "frame": null,
+            "durability": 0.6,
+            "note": "the cell to the right of 'Confirmation:'"
+          }
+        ],
+        "rejected": []
+      },
+      "text": null,
+      "url": null,
+      "risk": "safe",
+      "checkpoint": null,
+      "extracts": "confirmation",
+      "note": ""
+    },
+    {
+      "index": 11,
+      "action": "read",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "dom_path",
+            "value": "xpath=//td[normalize-space(.)=\"New Share ID:\"]/following-sibling::td[1]",
+            "frame": null,
+            "durability": 0.6,
+            "note": "the cell to the right of 'New Share ID:'"
+          }
+        ],
+        "rejected": []
+      },
+      "text": null,
+      "url": null,
+      "risk": "safe",
+      "checkpoint": null,
+      "extracts": "new_share_id",
       "note": ""
     }
   ]

@@ -63,6 +63,12 @@
       "when_text": "SUPERVISOR OVERRIDE REQUIRED",
       "message": "this function needs a supervisor to sign on",
       "terminal": false
+    },
+    {
+      "code": "validation_failed",
+      "when_text": "could not be validated",
+      "message": "the application rejected the values as entered",
+      "terminal": false
     }
   ],
   "steps": [

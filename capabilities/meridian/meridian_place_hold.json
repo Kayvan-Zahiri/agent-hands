@@ -91,6 +91,12 @@
       "when_text": "SUPERVISOR OVERRIDE REQUIRED",
       "message": "this function needs a supervisor to sign on",
       "terminal": false
+    },
+    {
+      "code": "validation_failed",
+      "when_text": "could not be validated",
+      "message": "the application rejected the values as entered",
+      "terminal": false
     }
   ],
   "steps": [
@@ -401,7 +407,7 @@
           },
           {
             "strategy": "point",
-            "value": "495,136",
+            "value": "522,136",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
@@ -587,7 +593,7 @@
       "risk": "reversible",
       "checkpoint": {
         "kind": "text_present",
-        "value": "CONFIRM"
+        "value": "CONFIRM ACCOUNT HOLD"
       },
       "extracts": null,
       "note": ""
@@ -599,7 +605,7 @@
         "candidates": [
           {
             "strategy": "role_name",
-            "value": "button \"Place Hold\"",
+            "value": "button \"Apply Hold\"",
             "frame": null,
             "durability": 0.95,
             "note": "on the confirmation screen"

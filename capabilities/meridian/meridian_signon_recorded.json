@@ -1,106 +1,39 @@
 {
   "schema_version": "1.0",
   "artifact_version": 1,
-  "name": "meridian_member_balance",
-  "description": "Read one share's balance and status from a member's record.",
+  "name": "meridian_signon_recorded",
+  "description": "Sign on as operator {operator} with [not recorded] [not recorded] at branch {branch} and stop at the main menu",
   "app_id": "meridian-core",
   "app_variant": null,
   "entry_url": "https://web-sample.interface-hiring.com/signon",
   "approved": true,
-  "recorded_by": "hand-authored trajectory; targets derived from the live app by perception.derive_targets",
-  "recorded_at": "",
+  "recorded_by": "discovery-agent",
+  "recorded_at": "2026-08-20T21:36:00+00:00",
   "params": [
     {
       "name": "operator",
       "type": "string",
       "required": true,
-      "description": "operator id",
+      "description": "Recorded from the goal; used in step[1].text.",
       "example": "teller1"
-    },
-    {
-      "name": "password",
-      "type": "string",
-      "required": true,
-      "description": "operator password",
-      "example": null
     },
     {
       "name": "branch",
       "type": "string",
       "required": true,
-      "description": "branch code",
+      "description": "Recorded from the goal; used in step[3].text.",
       "example": "MAIN-001"
     },
     {
-      "name": "member_id",
+      "name": "password",
       "type": "string",
       "required": true,
-      "description": "member number",
-      "example": "103001"
-    },
-    {
-      "name": "share_id",
-      "type": "string",
-      "required": true,
-      "description": "which share to read",
-      "example": "103001-MMKT-2"
+      "description": "Supplied per invocation. Never recorded.",
+      "example": null
     }
   ],
-  "outputs": [
-    {
-      "name": "member_name",
-      "type": "string",
-      "description": "the member's name as filed"
-    },
-    {
-      "name": "balance",
-      "type": "number",
-      "description": "the share's balance"
-    },
-    {
-      "name": "status",
-      "type": "string",
-      "description": "OPEN, HOLD or CLOSED"
-    }
-  ],
-  "business_rules": [
-    {
-      "code": "member_not_found",
-      "when_text": "RECORD NOT FOUND",
-      "message": "no member exists with that identifier",
-      "terminal": true
-    },
-    {
-      "code": "no_search_match",
-      "when_text": "No member records matched",
-      "message": "the search returned nothing",
-      "terminal": true
-    },
-    {
-      "code": "insufficient_funds",
-      "when_text": "INSUFFICIENT FUNDS",
-      "message": "the from-share does not hold that amount",
-      "terminal": true
-    },
-    {
-      "code": "transaction_rejected",
-      "when_text": "TRANSACTION REJECTED",
-      "message": "the application refused the transaction as entered",
-      "terminal": true
-    },
-    {
-      "code": "supervisor_required",
-      "when_text": "SUPERVISOR OVERRIDE REQUIRED",
-      "message": "this function needs a supervisor to sign on",
-      "terminal": false
-    },
-    {
-      "code": "validation_failed",
-      "when_text": "could not be validated",
-      "message": "the application rejected the values as entered",
-      "terminal": false
-    }
-  ],
+  "outputs": [],
+  "business_rules": [],
   "steps": [
     {
       "index": 0,
@@ -109,12 +42,9 @@
       "text": null,
       "url": "https://web-sample.interface-hiring.com/signon",
       "risk": "safe",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "NOT SIGNED ON"
-      },
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "entry point"
     },
     {
       "index": 1,
@@ -172,7 +102,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Enter operator ID"
     },
     {
       "index": 2,
@@ -230,7 +160,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Enter password"
     },
     {
       "index": 3,
@@ -288,7 +218,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Select branch"
     },
     {
       "index": 4,
@@ -349,90 +279,7 @@
         "value": "MAIN MENU"
       },
       "extracts": null,
-      "note": ""
-    },
-    {
-      "index": 5,
-      "action": "navigate",
-      "target": null,
-      "text": null,
-      "url": "https://web-sample.interface-hiring.com/members/{member_id}",
-      "risk": "safe",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "Member No.:"
-      },
-      "extracts": null,
-      "note": ""
-    },
-    {
-      "index": 6,
-      "action": "read",
-      "target": {
-        "candidates": [
-          {
-            "strategy": "dom_path",
-            "value": "xpath=//td[normalize-space(.)=\"Name:\"]/following-sibling::td[1]",
-            "frame": null,
-            "durability": 0.6,
-            "note": "the cell to the right of 'Name:'"
-          }
-        ],
-        "rejected": []
-      },
-      "text": null,
-      "url": null,
-      "risk": "safe",
-      "checkpoint": null,
-      "extracts": "member_name",
-      "note": ""
-    },
-    {
-      "index": 7,
-      "action": "read",
-      "target": {
-        "candidates": [
-          {
-            "strategy": "dom_path",
-            "value": "xpath=//tr[td[1][normalize-space(.)=\"{share_id}\"]]/td[3]",
-            "frame": null,
-            "durability": 0.6,
-            "note": "the cell in the row whose first cell is the share id"
-          }
-        ],
-        "rejected": []
-      },
-      "text": null,
-      "url": null,
-      "risk": "safe",
-      "checkpoint": null,
-      "extracts": "balance",
-      "note": ""
-    },
-    {
-      "index": 8,
-      "action": "read",
-      "target": {
-        "candidates": [
-          {
-            "strategy": "dom_path",
-            "value": "xpath=//tr[td[1][normalize-space(.)=\"{share_id}\"]]/td[4]",
-            "frame": null,
-            "durability": 0.6,
-            "note": "the cell in the row whose first cell is the share id"
-          }
-        ],
-        "rejected": []
-      },
-      "text": null,
-      "url": null,
-      "risk": "safe",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "Member No.:"
-      },
-      "extracts": "status",
-      "note": ""
+      "note": "Submit sign on"
     }
   ]
 }

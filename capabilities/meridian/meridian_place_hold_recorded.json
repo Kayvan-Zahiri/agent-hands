@@ -1,117 +1,52 @@
 {
   "schema_version": "1.0",
   "artifact_version": 1,
-  "name": "meridian_funds_transfer",
-  "description": "Move money between two of a member's shares. Posts immediately.",
+  "name": "meridian_place_hold_recorded",
+  "description": "Sign on as operator {operator} with [not recorded] [not recorded] at branch {branch}, then for member {member_id} place an account hold on account {member_id}-MMKT-11 with reason code LEGAL and notes recorded demo",
   "app_id": "meridian-core",
   "app_variant": null,
   "entry_url": "https://web-sample.interface-hiring.com/signon",
   "approved": true,
-  "recorded_by": "hand-authored trajectory; targets derived from the live app by perception.derive_targets",
-  "recorded_at": "",
+  "recorded_by": "discovery-agent",
+  "recorded_at": "2026-08-20T21:39:20+00:00",
   "params": [
     {
       "name": "operator",
       "type": "string",
       "required": true,
-      "description": "operator id",
-      "example": "teller1"
-    },
-    {
-      "name": "password",
-      "type": "string",
-      "required": true,
-      "description": "operator password",
-      "example": null
+      "description": "Recorded from the goal; used in step[1].text.",
+      "example": "super1"
     },
     {
       "name": "branch",
       "type": "string",
       "required": true,
-      "description": "branch code",
+      "description": "Recorded from the goal; used in step[3].text.",
       "example": "MAIN-001"
     },
     {
       "name": "member_id",
       "type": "string",
       "required": true,
-      "description": "member number",
+      "description": "Recorded from the goal; used in step[6].text, step[9].text.",
       "example": "103001"
     },
     {
-      "name": "from_share",
+      "name": "password",
       "type": "string",
       "required": true,
-      "description": "share id to debit",
+      "description": "Supplied per invocation. Never recorded.",
       "example": null
-    },
-    {
-      "name": "to_share",
-      "type": "string",
-      "required": true,
-      "description": "share id to credit",
-      "example": null
-    },
-    {
-      "name": "amount",
-      "type": "string",
-      "required": true,
-      "description": "amount, as the screen wants it",
-      "example": "0.01"
-    },
-    {
-      "name": "memo",
-      "type": "string",
-      "required": false,
-      "description": "free text on the transaction",
-      "example": ""
     }
   ],
   "outputs": [
     {
-      "name": "confirmation",
+      "name": "confirmation_number",
       "type": "string",
-      "description": "the confirmation number the app issued"
+      "description": "Read from the page. Example observed at record time: CN480143."
     }
   ],
-  "business_rules": [
-    {
-      "code": "member_not_found",
-      "when_text": "RECORD NOT FOUND",
-      "message": "no member exists with that identifier",
-      "terminal": true
-    },
-    {
-      "code": "no_search_match",
-      "when_text": "No member records matched",
-      "message": "the search returned nothing",
-      "terminal": true
-    },
-    {
-      "code": "insufficient_funds",
-      "when_text": "INSUFFICIENT FUNDS",
-      "message": "the from-share does not hold that amount",
-      "terminal": true
-    },
-    {
-      "code": "transaction_rejected",
-      "when_text": "TRANSACTION REJECTED",
-      "message": "the application refused the transaction as entered",
-      "terminal": true
-    },
-    {
-      "code": "supervisor_required",
-      "when_text": "SUPERVISOR OVERRIDE REQUIRED",
-      "message": "this function needs a supervisor to sign on",
-      "terminal": false
-    },
-    {
-      "code": "validation_failed",
-      "when_text": "could not be validated",
-      "message": "the application rejected the values as entered",
-      "terminal": false
-    }
-  ],
+  "business_rules": [],
   "steps": [
     {
       "index": 0,
@@ -120,12 +55,9 @@
       "text": null,
       "url": "https://web-sample.interface-hiring.com/signon",
       "risk": "safe",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "NOT SIGNED ON"
-      },
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "entry point"
     },
     {
       "index": 1,
@@ -183,7 +115,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Enter operator ID"
     },
     {
       "index": 2,
@@ -241,7 +173,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Enter password"
     },
     {
       "index": 3,
@@ -299,7 +231,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Select branch MAIN-001"
     },
     {
       "index": 4,
@@ -355,35 +287,250 @@
       "text": null,
       "url": null,
       "risk": "reversible",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "MAIN MENU"
-      },
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Sign on"
     },
     {
       "index": 5,
-      "action": "navigate",
-      "target": null,
-      "text": null,
-      "url": "https://web-sample.interface-hiring.com/members/{member_id}/transfer",
-      "risk": "safe",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "FUNDS TRANSFER"
+      "action": "click",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "link \"Place Account Hold\"",
+            "frame": null,
+            "durability": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "link \"Place Account Hold\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "link[8]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 8 of 11 link controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > table > tbody > tr:nth-of-type(5) > td:nth-of-type(2) > a",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'link' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "377,200",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
       },
+      "text": null,
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Go to Place Account Hold"
     },
     {
       "index": 6,
+      "action": "type",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "labelled_field",
+            "value": "Value:",
+            "frame": "main",
+            "durability": 0.85,
+            "note": "caption cell left of the field in the layout table"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "textbox[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 1 textbox controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > input:nth-of-type(1)",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "role_name",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "point",
+            "value": "464,148",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": "{member_id}",
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": "Search for member 103001"
+    },
+    {
+      "index": 7,
+      "action": "click",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "button \"Search\"",
+            "frame": null,
+            "durability": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "button \"Search\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "button[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 1 button controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > input:nth-of-type(2)",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'button' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "608,148",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": null,
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": "Run the search"
+    },
+    {
+      "index": 8,
+      "action": "click",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "link \"Select\"",
+            "frame": null,
+            "durability": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "link \"Select\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "link[4]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 4 of 5 link controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > table > tbody > tr:nth-of-type(2) > td:nth-of-type(4) > a",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'link' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "916,220",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": null,
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": "Select the member"
+    },
+    {
+      "index": 9,
       "action": "select",
       "target": {
         "candidates": [
           {
             "strategy": "labelled_field",
-            "value": "From Share:",
+            "value": "Share:",
             "frame": "main",
             "durability": 0.85,
             "note": "caption cell left of the field in the layout table"
@@ -420,28 +567,28 @@
           },
           {
             "strategy": "point",
-            "value": "540,136",
+            "value": "522,136",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
           }
         ]
       },
-      "text": "{from_share}",
+      "text": "{member_id}-MMKT-11",
       "url": null,
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Select the target account"
     },
     {
-      "index": 7,
+      "index": 10,
       "action": "select",
       "target": {
         "candidates": [
           {
             "strategy": "labelled_field",
-            "value": "To Share:",
+            "value": "Reason Code:",
             "frame": "main",
             "durability": 0.85,
             "note": "caption cell left of the field in the layout table"
@@ -478,28 +625,28 @@
           },
           {
             "strategy": "point",
-            "value": "540,160",
+            "value": "491,160",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
           }
         ]
       },
-      "text": "{to_share}",
+      "text": "LEGAL",
       "url": null,
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Set reason code LEGAL"
     },
     {
-      "index": 8,
+      "index": 11,
       "action": "type",
       "target": {
         "candidates": [
           {
             "strategy": "labelled_field",
-            "value": "Amount:",
+            "value": "Notes:",
             "frame": "main",
             "durability": 0.85,
             "note": "caption cell left of the field in the layout table"
@@ -509,7 +656,7 @@
             "value": "textbox[0]",
             "frame": "main",
             "durability": 0.4,
-            "note": "index 0 of 2 textbox controls in the frame; breaks if the page reorders"
+            "note": "index 0 of 1 textbox controls in the frame; breaks if the page reorders"
           },
           {
             "strategy": "dom_path",
@@ -536,80 +683,22 @@
           },
           {
             "strategy": "point",
-            "value": "444,184",
+            "value": "564,184",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
           }
         ]
       },
-      "text": "{amount}",
+      "text": "recorded demo",
       "url": null,
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Enter notes"
     },
     {
-      "index": 9,
-      "action": "type",
-      "target": {
-        "candidates": [
-          {
-            "strategy": "labelled_field",
-            "value": "Memo:",
-            "frame": "main",
-            "durability": 0.85,
-            "note": "caption cell left of the field in the layout table"
-          },
-          {
-            "strategy": "nth_of_role",
-            "value": "textbox[1]",
-            "frame": "main",
-            "durability": 0.4,
-            "note": "index 1 of 2 textbox controls in the frame; breaks if the page reorders"
-          },
-          {
-            "strategy": "dom_path",
-            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > table > tbody > tr:nth-of-type(4) > td:nth-of-type(2) > input",
-            "frame": "main",
-            "durability": 0.2,
-            "note": "structural path; any layout change invalidates it"
-          }
-        ],
-        "rejected": [
-          {
-            "strategy": "role_name",
-            "value": "",
-            "frame": null,
-            "durability": 0.0,
-            "note": "control has no accessible name"
-          },
-          {
-            "strategy": "role_name_in_region",
-            "value": "",
-            "frame": null,
-            "durability": 0.0,
-            "note": "control has no accessible name"
-          },
-          {
-            "strategy": "point",
-            "value": "528,208",
-            "frame": "main",
-            "durability": 0.05,
-            "note": "viewport coordinates; not resolvable, recorded for human review only"
-          }
-        ]
-      },
-      "text": "{memo}",
-      "url": null,
-      "risk": "reversible",
-      "checkpoint": null,
-      "extracts": null,
-      "note": ""
-    },
-    {
-      "index": 10,
+      "index": 12,
       "action": "click",
       "target": {
         "candidates": [
@@ -636,7 +725,7 @@
           },
           {
             "strategy": "dom_path",
-            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > table > tbody > tr:nth-of-type(5) > td:nth-of-type(2) > input",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > table > tbody > tr:nth-of-type(4) > td:nth-of-type(2) > input",
             "frame": "main",
             "durability": 0.2,
             "note": "structural path; any layout change invalidates it"
@@ -652,7 +741,7 @@
           },
           {
             "strategy": "point",
-            "value": "418,244",
+            "value": "426,222",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
@@ -662,59 +751,128 @@
       "text": null,
       "url": null,
       "risk": "reversible",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "CONFIRM FUNDS TRANSFER"
-      },
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Proceed to confirmation"
     },
     {
-      "index": 11,
+      "index": 13,
       "action": "click",
       "target": {
         "candidates": [
           {
             "strategy": "role_name",
-            "value": "button \"Post Transfer\"",
+            "value": "button \"Apply Hold\"",
             "frame": null,
             "durability": 0.95,
-            "note": "on the confirmation screen"
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "button \"Apply Hold\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "button[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 1 button controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > form > input:nth-of-type(5)",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
           }
         ],
-        "rejected": []
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'button' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "315,250",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
       },
       "text": null,
       "url": null,
       "risk": "irreversible",
-      "checkpoint": {
-        "kind": "text_present",
-        "value": "TRANSACTION COMPLETE"
-      },
+      "checkpoint": null,
       "extracts": null,
-      "note": ""
+      "note": "Apply the hold"
     },
     {
-      "index": 12,
+      "index": 14,
       "action": "read",
       "target": {
         "candidates": [
           {
-            "strategy": "dom_path",
-            "value": "xpath=//td[normalize-space(.)=\"Confirmation:\"]/following-sibling::td[1]",
+            "strategy": "role_name",
+            "value": "cell \"CN480143\"",
             "frame": null,
-            "durability": 0.6,
-            "note": "the cell to the right of 'Confirmation:'"
+            "durability": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "cell \"CN480143\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "cell[4]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 4 of 11 cell controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2)",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
           }
         ],
-        "rejected": []
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'cell' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "471,148",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
       },
       "text": null,
       "url": null,
       "risk": "safe",
-      "checkpoint": null,
-      "extracts": "confirmation",
-      "note": ""
+      "checkpoint": {
+        "kind": "text_present",
+        "value": "ACCOUNT HOLD APPLIED"
+      },
+      "extracts": "confirmation_number",
+      "note": "Capture the hold confirmation number for the caller"
     }
   ]
 }
