@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 
 from .escalation import Decision as OperatorDecision
 from .escalation import Escalator, ScriptedConsole
-from .evidence import Evidence
+from .evidence import DEFAULT_ROOT, Evidence
 from .policy import AppAllowance, Policy
 from .recorder import load
 from .replay import ParamError, Replay
@@ -60,7 +60,11 @@ class CatalogError(Exception):
 
 def args_digest(args: dict[str, Any]) -> str:
     """A stable fingerprint of one invocation's arguments."""
-    canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
+    # `ensure_ascii=False` so a browser's JSON.stringify over the same sorted
+    # keys produces the same bytes; a client that cannot reproduce the digest
+    # cannot confirm anything.
+    canonical = json.dumps(args, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -324,6 +328,56 @@ class Invoker:
                                approves=False)
 
 
+def _history(inv: "Invoker", limit: int = 60) -> list[dict[str, Any]]:
+    """Every run this machine has a record of, newest first.
+
+    Read from the evidence tree rather than from the in-memory registry, because
+    the registry is empty after a restart and never held the runs the CLI made.
+    A run id *is* an evidence directory name, so the two join for free. Live runs
+    come from the registry, since they have no `result.json` yet.
+    """
+    root = Path(inv.evidence_root) if inv.evidence_root else DEFAULT_ROOT
+    seen: dict[str, dict[str, Any]] = {}
+    for run_id, run in inv.runs.items():
+        seen[run_id] = {"run_id": run_id, "capability": run.capability,
+                        "status": run.status, "error": run.error}
+    for path in sorted(root.glob("*/result.json"), reverse=True)[:limit]:
+        run_id = path.parent.name
+        try:
+            result = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        seen[run_id] = {
+            "run_id": run_id, "capability": result.get("capability", "?"),
+            "status": "completed", "outcome": result.get("outcome"),
+            "business_code": result.get("business_code"),
+        }
+    return sorted(seen.values(), key=lambda r: r["run_id"], reverse=True)[:limit]
+
+
+def _events(inv: "Invoker", run_id: str) -> dict[str, Any]:
+    """One run's log, and what else it left behind.
+
+    `run.jsonl` is flushed a line at a time, so a run still going answers with
+    what it has done so far and the page can watch it work.
+    """
+    root = Path(inv.evidence_root) if inv.evidence_root else DEFAULT_ROOT
+    run_dir = root / run_id
+    if run_id != Path(run_id).name or not run_dir.is_dir():
+        return {"events": [], "artifacts": []}
+    events = []
+    log = run_dir / "run.jsonl"
+    if log.exists():
+        for line in log.read_text().splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    artifacts = sorted(f.name for f in run_dir.iterdir()
+                       if f.name not in ("run.jsonl", "result.json"))
+    return {"events": events, "artifacts": artifacts}
+
+
 class _Approvers:
     """Ask each in turn. The caller's own confirmation, then a person."""
 
@@ -381,6 +435,15 @@ class _Handler(BaseHTTPRequestHandler):
         inv: Invoker = self.server.invoker                   # type: ignore[attr-defined]
         path = urlparse(self.path).path.rstrip("/") or "/"
 
+        if path == "/":
+            page = Path(__file__).resolve().parent / "dashboard.html"
+            blob = page.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(blob)))
+            self.end_headers()
+            self.wfile.write(blob)
+            return
         if path == "/capabilities":
             return self._send(200, inv.catalog.listing())
         if path.startswith("/capabilities/"):
@@ -390,12 +453,23 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": f"no capability named {name!r}"})
             return self._send(200, _projection(cap))
         if path == "/invocations":
-            return self._send(200, {"invocations": [r.to_json() for r in inv.runs.values()]})
+            return self._send(200, {"invocations": _history(inv)})
         if path.startswith("/invocations/"):
-            run = inv.runs.get(path.split("/")[2])
-            if run is None:
+            parts = path.split("/")
+            run_id = parts[2]
+            if len(parts) == 4 and parts[3] == "events":
+                return self._send(200, _events(inv, run_id))
+            run = inv.runs.get(run_id)
+            if run is not None:
+                return self._send(200 if run.status == "completed" else 202, run.to_json())
+            # Not in this process: a run from an earlier one, or from the CLI.
+            root = Path(inv.evidence_root) if inv.evidence_root else DEFAULT_ROOT
+            stored = root / Path(run_id).name / "result.json"
+            if not stored.exists():
                 return self._send(404, {"error": "no such run"})
-            return self._send(200 if run.status == "completed" else 202, run.to_json())
+            result = json.loads(stored.read_text())
+            return self._send(200, {"run_id": run_id, "capability": result.get("capability"),
+                                    "status": "completed", "result": result, "error": None})
         return self._send(404, {"error": f"no route {path!r}"})
 
     def do_POST(self) -> None:                               # noqa: N802

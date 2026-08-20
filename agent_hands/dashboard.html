@@ -1,0 +1,479 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-hands · capability console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+:root {
+  --bg:#f6f7f9; --surface:#ffffff; --raised:#fbfcfd;
+  --line:#e3e6eb; --line-strong:#cfd4dc;
+  --ink:#15181d; --ink-2:#4a5261; --ink-3:#78808f;
+  --brand:#3b5bdb; --brand-soft:#eef1fd;
+  --ok:#0f8a5f; --ok-soft:#e7f6ef;
+  --warn:#a86a12; --warn-soft:#fdf3e2;
+  --bad:#c23b32; --bad-soft:#fdeeed;
+  --live:#2b7cd3; --live-soft:#e9f2fb;
+  --shadow:0 1px 2px rgba(16,20,28,.05), 0 4px 12px rgba(16,20,28,.05);
+  --radius:10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#0f1115; --surface:#161a20; --raised:#1b2027;
+    --line:#252b34; --line-strong:#343c48;
+    --ink:#e8ecf2; --ink-2:#a7b0bf; --ink-3:#798394;
+    --brand:#7d94f8; --brand-soft:#1c2438;
+    --ok:#4bc48d; --ok-soft:#12291f;
+    --warn:#d9a441; --warn-soft:#2a2113;
+    --bad:#e8756a; --bad-soft:#2c1817;
+    --live:#5fa8e8; --live-soft:#12222f;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+* { box-sizing:border-box; margin:0; padding:0 }
+html, body { height:100% }
+body {
+  background:var(--bg); color:var(--ink);
+  font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono { font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+        font-size:.92em; font-variant-ligatures:none }
+
+/* ---------- chrome ---------- */
+.topbar {
+  height:60px; display:flex; align-items:center; gap:18px; padding:0 20px;
+  background:var(--surface); border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:20;
+}
+.brand { display:flex; align-items:center; gap:11px }
+.mark {
+  width:32px; height:32px; border-radius:9px; display:grid; place-items:center;
+  background:var(--brand); color:#fff; font-weight:700; font-size:15px;
+}
+.brand h1 { font-size:15px; font-weight:650; letter-spacing:-.01em; line-height:1.2 }
+.brand p { font-size:12px; color:var(--ink-3); line-height:1.3 }
+.chip {
+  display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 10px;
+  border:1px solid var(--line); border-radius:999px; background:var(--raised);
+  font-size:12.5px; color:var(--ink-2); white-space:nowrap;
+}
+.chip .pip { width:7px; height:7px; border-radius:50%; background:var(--ok) }
+.grow { flex:1 }
+
+/* ---------- layout ---------- */
+.app {
+  display:grid; grid-template-columns:288px minmax(0,1fr) 320px;
+  height:calc(100vh - 60px);
+}
+.col { overflow-y:auto; overflow-x:hidden; padding:18px }
+.col + .col { border-left:1px solid var(--line) }
+aside { background:var(--surface) }
+.rail { background:var(--surface) }
+.eyebrow {
+  font-size:11px; font-weight:650; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--ink-3); margin-bottom:10px; display:flex; align-items:center; gap:8px;
+}
+.eyebrow .count { font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink-3) }
+
+/* ---------- ask ---------- */
+.ask-wrap { position:relative; margin-bottom:8px }
+.ask-wrap svg { position:absolute; left:11px; top:50%; transform:translateY(-50%);
+                width:15px; height:15px; color:var(--ink-3) }
+input, select, textarea {
+  width:100%; font:inherit; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line-strong); border-radius:8px; padding:9px 11px;
+  transition:border-color .12s, box-shadow .12s;
+}
+#ask { padding-left:33px }
+input:focus, textarea:focus, select:focus {
+  outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft);
+}
+input::placeholder { color:var(--ink-3) }
+.note { font-size:12.5px; color:var(--ink-3); line-height:1.45 }
+.note b { color:var(--ink-2); font-weight:600 }
+
+/* ---------- catalog ---------- */
+.group { margin-top:20px }
+.item {
+  width:100%; text-align:left; background:transparent; border:1px solid transparent;
+  border-radius:9px; padding:9px 10px; cursor:pointer; display:block; margin-bottom:2px;
+  transition:background .12s, border-color .12s;
+}
+.item:hover { background:var(--raised); border-color:var(--line) }
+.item[aria-current="true"] { background:var(--brand-soft); border-color:var(--brand) }
+.item .top { display:flex; align-items:center; gap:7px }
+.item .nm { font-weight:560; font-size:13.5px; letter-spacing:-.01em }
+.item .dsc { font-size:12px; color:var(--ink-3); margin-top:2px;
+             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+.badge {
+  font-size:10px; font-weight:650; letter-spacing:.03em; text-transform:uppercase;
+  padding:2px 6px; border-radius:5px; background:var(--bad-soft); color:var(--bad);
+  border:1px solid transparent; white-space:nowrap;
+}
+.badge.soft { background:var(--raised); color:var(--ink-3); border-color:var(--line) }
+
+/* ---------- main ---------- */
+main { padding:26px 30px }
+.page-head { margin-bottom:22px }
+.page-head h2 { font-size:21px; font-weight:650; letter-spacing:-.02em }
+.page-head p { color:var(--ink-2); font-size:13.5px; margin-top:4px; max-width:62ch }
+.card {
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:20px; margin-bottom:16px;
+}
+.card > h3 {
+  font-size:12px; font-weight:650; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--ink-3); margin-bottom:14px;
+}
+.fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px }
+.field label { display:block; font-size:12.5px; font-weight:560; margin-bottom:5px }
+.field .t { color:var(--ink-3); font-weight:400; margin-left:5px }
+.danger {
+  display:flex; gap:11px; padding:13px 15px; border-radius:9px;
+  background:var(--warn-soft); border:1px solid transparent; margin:18px 0 0;
+}
+.danger .ic { color:var(--warn); flex:none; font-size:15px; line-height:1.4 }
+.danger p { font-size:13px; color:var(--ink-2); line-height:1.5 }
+.danger strong { color:var(--ink) }
+.confirm { display:flex; align-items:center; gap:9px; margin-top:12px; cursor:pointer; font-size:13.5px }
+.confirm input { width:16px; height:16px; accent-color:var(--brand); cursor:pointer }
+.actions { display:flex; align-items:center; gap:12px; margin-top:20px }
+button.primary {
+  background:var(--brand); color:#fff; border:0; border-radius:8px; padding:10px 18px;
+  font:inherit; font-weight:600; font-size:14px; cursor:pointer; transition:filter .12s;
+}
+button.primary:hover { filter:brightness(1.07) }
+button.primary:disabled { opacity:.55; cursor:default; filter:none }
+.spinner {
+  width:14px; height:14px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff;
+  border-radius:50%; animation:spin .7s linear infinite; display:inline-block;
+  vertical-align:-2px; margin-right:7px;
+}
+@keyframes spin { to { transform:rotate(360deg) } }
+
+/* ---------- status ---------- */
+.status {
+  display:inline-flex; align-items:center; gap:7px; padding:4px 11px; border-radius:999px;
+  font-size:12.5px; font-weight:600; border:1px solid transparent;
+}
+.status .pip { width:7px; height:7px; border-radius:50% }
+.s-success { background:var(--ok-soft); color:var(--ok) } .s-success .pip { background:var(--ok) }
+.s-business_outcome { background:var(--warn-soft); color:var(--warn) } .s-business_outcome .pip { background:var(--warn) }
+.s-failure { background:var(--bad-soft); color:var(--bad) } .s-failure .pip { background:var(--bad) }
+.s-running { background:var(--live-soft); color:var(--live) } .s-running .pip { background:var(--live); animation:pulse 1.3s ease-in-out infinite }
+@keyframes pulse { 50% { opacity:.35 } }
+
+/* ---------- outputs ---------- */
+.kvs { display:grid; grid-template-columns:auto 1fr; gap:1px; background:var(--line);
+       border:1px solid var(--line); border-radius:8px; overflow:hidden }
+.kvs > div { background:var(--surface); padding:10px 14px; font-size:13.5px }
+.kvs .k { color:var(--ink-2); font-weight:550; white-space:nowrap }
+.kvs .v { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px }
+
+/* ---------- steps ---------- */
+.steps { position:relative; padding-left:22px }
+.steps::before { content:""; position:absolute; left:6px; top:8px; bottom:8px;
+                 width:2px; background:var(--line); border-radius:2px }
+.step { position:relative; padding:7px 0 }
+.step::before {
+  content:""; position:absolute; left:-19px; top:14px; width:9px; height:9px;
+  border-radius:50%; background:var(--line-strong); border:2px solid var(--surface);
+}
+.step.ok::before { background:var(--ok) }
+.step.no::before { background:var(--bad) }
+.step .line { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap }
+.step .ix { font-size:11.5px; color:var(--ink-3); font-variant-numeric:tabular-nums; min-width:16px }
+.step .act { font-weight:560; font-size:13.5px }
+.step .val { font-family:ui-monospace,Menlo,monospace; font-size:12.5px; color:var(--ink-2) }
+.tag {
+  font-size:11px; padding:1px 7px; border-radius:5px; background:var(--raised);
+  border:1px solid var(--line); color:var(--ink-3); font-family:ui-monospace,Menlo,monospace;
+}
+.tag.hl { background:var(--warn-soft); border-color:transparent; color:var(--warn) }
+.ms { font-size:11.5px; color:var(--ink-3); font-variant-numeric:tabular-nums; margin-left:auto }
+.errline { font-size:12.5px; color:var(--bad); margin-top:3px }
+
+/* ---------- run rail ---------- */
+.run {
+  width:100%; text-align:left; background:transparent; border:1px solid transparent;
+  border-radius:9px; padding:10px; cursor:pointer; display:block; margin-bottom:3px;
+  transition:background .12s, border-color .12s;
+}
+.run:hover { background:var(--raised); border-color:var(--line) }
+.run[aria-current="true"] { background:var(--brand-soft); border-color:var(--brand) }
+.run .r1 { display:flex; align-items:center; gap:8px }
+.run .cap { font-weight:560; font-size:13px; letter-spacing:-.01em; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap }
+.run .dot { width:7px; height:7px; border-radius:50%; flex:none }
+.run .r2 { font-size:11.5px; color:var(--ink-3); margin-top:3px; padding-left:15px }
+.d-success { background:var(--ok) } .d-business_outcome { background:var(--warn) }
+.d-failure { background:var(--bad) } .d-running { background:var(--live) }
+.d-completed { background:var(--ink-3) }
+
+.empty { text-align:center; padding:44px 20px; color:var(--ink-3) }
+.empty .big { font-size:26px; margin-bottom:10px; opacity:.5 }
+.empty p { font-size:13.5px; max-width:34ch; margin:0 auto }
+.banner {
+  padding:12px 15px; border-radius:9px; background:var(--bad-soft); color:var(--bad);
+  font-size:13px; margin-bottom:16px; font-family:ui-monospace,Menlo,monospace;
+}
+@media (max-width:1180px) { .app { grid-template-columns:250px minmax(0,1fr) } .rail { display:none } }
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="mark">◆</div>
+    <div><h1>agent-hands</h1><p>capability console</p></div>
+  </div>
+  <span class="chip" id="target">—</span>
+  <div class="grow"></div>
+  <span class="chip"><span class="pip"></span><span id="capcount">connecting</span></span>
+</header>
+
+<div class="app">
+  <aside class="col">
+    <div class="eyebrow">Ask</div>
+    <div class="ask-wrap">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+        <circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17" stroke-linecap="round"/>
+      </svg>
+      <input id="ask" placeholder="balance for 103001" autocomplete="off" autofocus>
+    </div>
+    <p class="note" id="askhint">Keyword routing, no model. Picks a capability and fills
+      what it can read out of the sentence.</p>
+    <div id="catalog"></div>
+  </aside>
+
+  <main class="col" id="main"></main>
+
+  <section class="col rail">
+    <div class="eyebrow">Runs <span class="count" id="runcount"></span></div>
+    <div id="runs"></div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const j = (u, o) => fetch(u, o).then(r => r.json().then(b => ({status:r.status, body:b})));
+let caps = [], chosen = null, current = null;
+
+/* ---------- catalog ---------- */
+async function loadCatalog() {
+  const {body} = await j('/capabilities');
+  caps = body.capabilities;
+  $('#capcount').textContent = `${caps.length} capabilities`;
+  const hosts = [...new Set(caps.map(c => c.app_id))];
+  $('#target').textContent = hosts.join(' · ');
+  const groups = {};
+  for (const c of caps) (groups[c.app_id] ||= []).push(c);
+  $('#catalog').innerHTML = Object.entries(groups).map(([app, list]) => `
+    <div class="group">
+      <div class="eyebrow">${esc(app)} <span class="count">${list.length}</span></div>
+      ${list.map(c => `
+        <button class="item" data-id="${esc(c.id)}">
+          <span class="top">
+            <span class="nm">${esc(c.id)}</span>
+            ${c.irreversible ? '<span class="badge">writes</span>' : ''}
+          </span>
+          <span class="dsc">${esc(c.description || '')}</span>
+        </button>`).join('')}
+    </div>`).join('');
+  $('#catalog').querySelectorAll('.item').forEach(el =>
+    el.onclick = () => choose(caps.find(c => c.id === el.dataset.id)));
+}
+
+/* ---------- the whole "chatbot" ----------
+   Keyword routing, then lift the obvious literals out of the sentence. Not a
+   model: this is a demo driver over the API, and a wrong guess belongs in a
+   form field where you can see it, not behind something that sounds confident. */
+const ROUTES = [
+  [/balance|how much|funds in/i, 'balance'], [/transfer|move|send|pay/i, 'transfer'],
+  [/hold|freeze|restrict/i, 'hold'],         [/open|new share/i, 'open_share'],
+  [/update|change|e-?mail|phone|address/i, 'update'],
+  [/look ?up|find|search|who is/i, 'inquiry'], [/sign ?on|log ?in/i, 'signon'],
+];
+const route = t => { for (const [re, k] of ROUTES) if (re.test(t)) {
+  const hit = caps.find(c => c.id.includes(k)); if (hit) return hit; } return null; };
+
+function guess(cap, text) {
+  const out = {}, member = text.match(/\b\d{6}\b/),
+        share = text.match(/\b\d{6}-[A-Z0-9]+(?:-\d+)?\b/i),
+        amount = text.match(/\$?(\d+\.\d{2})\b/);
+  for (const p of cap.params) {
+    if ((p.name === 'member_id' || p.name === 'value') && member) out[p.name] = member[0];
+    else if (p.name === 'amount' && amount) out[p.name] = amount[1];
+    else if (p.name.endsWith('share') && share) out[p.name] = share[0];
+    else if (p.example) out[p.name] = p.example;
+  }
+  return out;
+}
+
+$('#ask').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const cap = route(e.target.value);
+  if (!cap) return $('#askhint').innerHTML =
+    'Nothing matched &mdash; the router only knows a handful of words. ' +
+    'Pick a capability from the list below.';
+  $('#askhint').innerHTML = `Routed to <b>${esc(cap.id)}</b>.`;
+  choose(cap, guess(cap, e.target.value));
+});
+
+/* ---------- invoke ---------- */
+function choose(cap, prefill) {
+  chosen = cap; current = null;
+  document.querySelectorAll('.item').forEach(el =>
+    el.setAttribute('aria-current', el.dataset.id === cap.id));
+  document.querySelectorAll('.run').forEach(el => el.setAttribute('aria-current', 'false'));
+  const pre = prefill || guess(cap, $('#ask').value || '');
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <h2>${esc(cap.id)}</h2>
+      <p>${esc(cap.description || '')}</p>
+    </div>
+    <div class="card">
+      <h3>Arguments</h3>
+      <div class="fields">
+        ${cap.params.map(p => `
+          <div class="field">
+            <label>${esc(p.name)}<span class="t">${p.type}${p.required ? '' : ' · optional'}</span></label>
+            <input data-p="${esc(p.name)}" value="${esc(pre[p.name] || '')}"
+                   type="${p.name === 'password' ? 'password' : 'text'}"
+                   placeholder="${esc(p.description || '')}">
+          </div>`).join('')}
+      </div>
+      ${cap.irreversible ? `
+        <div class="danger">
+          <span class="ic">▲</span>
+          <p><strong>This writes, and it cannot be undone from the screen it posts on.</strong>
+             The server accepts a confirmation bound to these exact arguments, and only for
+             capabilities it was started with as confirmable.</p>
+        </div>
+        <label class="confirm"><input type="checkbox" id="confirm">
+          Confirm this invocation</label>` : ''}
+      <div class="actions">
+        <button class="primary" id="go">Invoke</button>
+        <span class="note" id="gonote"></span>
+      </div>
+    </div>`;
+  $('#go').onclick = invoke;
+}
+
+async function digest(args) {
+  const canonical = JSON.stringify(args, Object.keys(args).sort());
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function invoke() {
+  const args = {};
+  document.querySelectorAll('[data-p]').forEach(i => { if (i.value) args[i.dataset.p] = i.value; });
+  const body = {args};
+  if ($('#confirm')?.checked) {
+    body.confirm = {capability: chosen.id, args_digest: await digest(args)};
+  }
+  const btn = $('#go');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Running';
+  $('#gonote').textContent = 'Driving the application in a real browser…';
+  const {body: res} = await j(`/capabilities/${encodeURIComponent(chosen.id)}/invocations`,
+    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  btn.disabled = false; btn.textContent = 'Invoke'; $('#gonote').textContent = '';
+  await loadRuns();
+  if (res.run_id) show(res.run_id);
+}
+
+/* ---------- runs ---------- */
+async function loadRuns() {
+  const {body} = await j('/invocations');
+  const runs = body.invocations;
+  $('#runcount').textContent = runs.length;
+  $('#runs').innerHTML = runs.map(r => {
+    const state = r.outcome || r.status;
+    const when = r.run_id.slice(9, 15).replace(/(\d\d)(\d\d)(\d\d)/, '$1:$2:$3');
+    return `<button class="run" data-run="${esc(r.run_id)}">
+      <span class="r1"><span class="dot d-${state}"></span>
+        <span class="cap">${esc(r.capability)}</span></span>
+      <span class="r2">${esc(state.replace('_', ' '))}${r.business_code
+        ? ' · ' + esc(r.business_code) : ''} · ${when}</span>
+    </button>`;
+  }).join('') || '<p class="note">No runs yet.</p>';
+  $('#runs').querySelectorAll('.run').forEach(el => {
+    el.setAttribute('aria-current', el.dataset.run === current);
+    el.onclick = () => show(el.dataset.run);
+  });
+}
+
+async function show(id) {
+  current = id; chosen = null;
+  document.querySelectorAll('.item').forEach(el => el.setAttribute('aria-current', 'false'));
+  document.querySelectorAll('.run').forEach(el =>
+    el.setAttribute('aria-current', el.dataset.run === id));
+  const [{body: r}, {body: ev}] = await Promise.all(
+    [j(`/invocations/${id}`), j(`/invocations/${id}/events`)]);
+  const res = r.result || {};
+  const state = res.outcome || (r.error ? 'failure' : r.status);
+  const steps = ev.events.filter(e => e.event === 'step');
+  const outs = res.typed_outputs || res.outputs || {};
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <h2>${esc(r.capability || '—')}</h2>
+      <p class="mono">${esc(id)}</p>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span class="status s-${state}"><span class="pip"></span>${esc(state.replace('_',' '))}</span>
+        ${res.business_code ? `<span class="badge soft">${esc(res.business_code)}</span>` : ''}
+        <span class="note">${esc(res.message || '')}</span>
+      </div>
+      ${r.error ? `<div class="banner" style="margin-top:14px">${esc(r.error)}</div>` : ''}
+    </div>
+
+    ${Object.keys(outs).length ? `<div class="card"><h3>Outputs</h3>
+      <div class="kvs">${Object.entries(outs).map(([k, v]) =>
+        `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join('')}</div></div>` : ''}
+
+    ${(res.degraded || []).length ? `<div class="card"><h3>Degraded</h3>
+      <p class="note" style="margin-bottom:12px">Resolved, but not on the strategy that was
+        recorded — one release from not resolving at all.</p>
+      <div class="kvs">${res.degraded.map(d =>
+        `<div class="k">step ${d.step}</div><div class="v">${esc(d.primary)} →
+          <span style="color:var(--warn)">${esc(d.won_by)}</span> (rank ${d.rank})</div>`).join('')}</div>
+    </div>` : ''}
+
+    ${(res.recovered || []).length ? `<div class="card"><h3>Recovered</h3>
+      ${res.recovered.map(l => `<p class="note" style="margin-bottom:6px">${esc(l)}</p>`).join('')}
+    </div>` : ''}
+
+    <div class="card"><h3>Steps</h3>
+      ${steps.length ? `<div class="steps">${steps.map(s => `
+        <div class="step ${s.checkpoint_ok === true ? 'ok' : s.checkpoint_ok === false ? 'no' : ''}">
+          <div class="line">
+            <span class="ix">${s.index}</span>
+            <span class="act">${esc(s.action)}</span>
+            ${s.text ? `<span class="val">${esc(s.text)}</span>` : ''}
+            ${s.resolved_by ? `<span class="tag${s.resolved_by.strategy === 'nth_of_role'
+              || s.resolved_by.strategy === 'dom_path' ? ' hl' : ''}">${esc(s.resolved_by.strategy)}</span>` : ''}
+            ${s.duration_ms != null ? `<span class="ms">${s.duration_ms} ms</span>` : ''}
+          </div>
+          ${s.error ? `<div class="errline">${esc(s.error)}</div>` : ''}
+        </div>`).join('')}</div>` : '<p class="note">No step records.</p>'}
+    </div>
+
+    ${ev.artifacts.length ? `<div class="card"><h3>Evidence</h3>
+      ${ev.artifacts.map(a => `<p class="note mono" style="margin-bottom:4px">${esc(a)}</p>`).join('')}
+    </div>` : ''}`;
+}
+
+function welcome() {
+  $('#main').innerHTML = `<div class="empty">
+    <div class="big">◆</div>
+    <p>Pick a capability to invoke it, or a run to see what the system did.</p>
+  </div>`;
+}
+
+welcome();
+loadCatalog().then(loadRuns);
+setInterval(() => { if (!chosen) loadRuns(); }, 5000);
+</script>
