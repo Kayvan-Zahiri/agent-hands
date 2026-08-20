@@ -35,19 +35,30 @@ export PYTHONPATH=.
 alias agent-hands=".venv/bin/python -m agent_hands"
 
 # 1. a model drives the app once and writes a draft artifact
+#    the only step that needs ANTHROPIC_API_KEY
 agent-hands record --goal "Look up member 12345 and open their detail screen" \
-                   --url http://127.0.0.1:8899/
+                   --url http://127.0.0.1:8899/ --out /tmp/demo.json
 
 # 2. read what it recorded, including the strategies it rejected and why
-agent-hands show capabilities/member_lookup.json
+agent-hands show /tmp/demo.json
 
 # 3. sign it off. nothing replays until this happens
-agent-hands approve capabilities/member_lookup.json
+agent-hands approve /tmp/demo.json
 
-# 4. run it, with different inputs, no model
-agent-hands replay capabilities/member_lookup.json --param member_id=12345
-agent-hands replay capabilities/member_lookup.json --param member_id=99999
+# 4. run it, on a member the model never saw, with no model
+agent-hands replay /tmp/demo.json --param member_id=30021
 ```
+
+**No API key?** Skip step 1. `capabilities/member_lookup.json` is committed and
+already approved, so the rest works against it unchanged:
+
+```bash
+agent-hands show    capabilities/member_lookup.json
+agent-hands replay  capabilities/member_lookup.json --param member_id=12345
+agent-hands replay  capabilities/member_lookup.json --param member_id=99999
+```
+
+Replay never reads the key. Unset it and everything below still runs.
 
 Exit codes distinguish the three outcomes the way the type does:
 `0` success, `3` business outcome (the app answered, and the answer was "no"),
@@ -58,6 +69,54 @@ member_id=12345  exit=0  success           flow completed
 member_id=99999  exit=3  business_outcome  member_not_found
 member_id=abcde  exit=3  business_outcome  invalid_identifier
 ```
+
+## The human handoff
+
+When replay cannot safely continue, it stops and gives a person the *same* live
+session, rather than failing or starting over. To see it, use `--headed` so there
+is a window to hand over, and leave off `--unattended`, which is the flag that
+says nobody is watching:
+
+```bash
+agent-hands replay capabilities/member_lookup_stale.json \
+    --param member_id=12345 --headed
+```
+
+`member_lookup_stale.json` is a recording that no longer matches the app: the
+submit control was renamed. It stops at step 2 and prints:
+
+```
+HANDOFF int-...  (unresolved_element)
+  capability : member_lookup_stale
+  step       : 2 (click)
+  expected   : role_name='link "Submit Query"'
+  screenshot : evidence/.../int-...-before.png
+
+  the browser is yours. fix the page, then:  [r]esume  [a]bort
+  >
+```
+
+Fix the page in that window, then answer `r` and say what you did. Headless
+refuses to hand over rather than pretending it can:
+
+```
+the browser is headless, so there is no window to fix this in.
+```
+
+Handing control back is not automatic. The engine re-confirms the last screen it
+knew it was on before it will act again:
+
+| you do | what happens |
+|---|---|
+| fix the page, leave it where it was | resume verified, the step is retried |
+| finish the step yourself | refused: *page moved during handoff* |
+| anything, on any artifact in `capabilities/` | refused: *no confirmed checkpoint* |
+
+The last row is a real limitation, not a quirk. Recording attaches a check to the
+**final** step only, so when an earlier step fails there is nothing confirmed to
+compare against. `REPORT.md` covers it under Cuts. All three rows are asserted in
+`tests/test_replay.py` under "escalation, resume and handback", which is the
+place to look for the working case without driving a browser by hand.
 
 ## Layout
 
