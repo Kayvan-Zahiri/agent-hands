@@ -201,10 +201,15 @@ class BusinessRule:
         }
 
 
+# The types a parameter or an output may declare. Named once so a function
+# that produces one can say so, rather than widening it back to `str`.
+ValueType = Literal["string", "integer", "number", "boolean"]
+
+
 @dataclass(frozen=True)
 class Param:
     name: str
-    type: Literal["string", "integer", "number", "boolean"]
+    type: ValueType
     required: bool = True
     description: str = ""
     example: str | None = None
@@ -219,7 +224,7 @@ class Param:
 @dataclass(frozen=True)
 class Output:
     name: str
-    type: Literal["string", "integer", "number", "boolean"]
+    type: ValueType
     description: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -233,7 +238,7 @@ _TRUE = frozenset({"true", "yes", "y", "on", "1"})
 _FALSE = frozenset({"false", "no", "n", "off", "0"})
 
 
-def infer_output_type(sample: str) -> str:
+def infer_output_type(sample: str) -> ValueType:
     """The narrowest type a value read at record time clearly satisfies.
 
     Conservative on purpose. Anything not obviously a number stays "string",
@@ -351,6 +356,28 @@ class Outcome(str, enum.Enum):
     FAILURE = "failure"
 
 
+@dataclass(frozen=True)
+class Degradation:
+    """A step that resolved only because a lower-ranked candidate held.
+
+    A run that passes on a fallback is one release away from not passing. The
+    engine already knew that and wrote it to the log, so a clean run and a
+    limping one handed the caller the same result. This is what tells them
+    apart, and what something aggregating runs would count.
+    """
+
+    step: int
+    primary: Strategy        # the recorded first choice, which missed
+    won_by: Strategy         # the candidate that actually found the control
+    rank: int                # its place in the list; rank 0 is not a degradation
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "step": self.step, "primary": self.primary.value,
+            "won_by": self.won_by.value, "rank": self.rank,
+        }
+
+
 @dataclass
 class ReplayResult:
     outcome: Outcome
@@ -364,6 +391,8 @@ class ReplayResult:
     expected: str | None = None
     observed: str | None = None
     recovered: list[str] = field(default_factory=list)
+    # Steps that only resolved on a fallback. Empty is the healthy case.
+    degraded: list[Degradation] = field(default_factory=list)
     evidence_dir: str | None = None
     escalated: bool = False
 
@@ -383,6 +412,7 @@ class ReplayResult:
             "expected": self.expected,
             "observed": self.observed,
             "recovered": self.recovered,
+            "degraded": [d.to_json() for d in self.degraded],
             "evidence_dir": self.evidence_dir,
             "escalated": self.escalated,
         }

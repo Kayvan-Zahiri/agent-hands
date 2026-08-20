@@ -41,8 +41,9 @@ exactly what lets a slow application be a recovery rather than a failure.
 
 from __future__ import annotations
 
+import copy
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterable, Literal
 
 from playwright.sync_api import Error as PlaywrightError
@@ -55,8 +56,8 @@ from .perception import (
 )
 from .policy import Policy, PolicyViolation
 from .schema import (
-    ActionKind, BusinessRule, Capability, Checkpoint, Outcome, ReplayResult, Step, Target,
-    output_violation,
+    ActionKind, BusinessRule, Capability, Checkpoint, Degradation, Outcome, ReplayResult,
+    Step, Target, output_violation,
 )
 
 # Short wait first, then one longer one. A step that is merely slow is treated
@@ -78,6 +79,14 @@ MAX_SESSION_RECOVERIES = 1
 # How many times we dismiss the same popup on one step before deciding it is
 # not going away.
 MAX_DISMISSALS = 2
+
+# A handoff that comes back "fixed" buys the step another attempt. Escalation
+# only ever happens on a step's last attempt, because `_reobserve` absorbs the
+# earlier ones, so a resume with no attempt left could never re-run the step it
+# had just asked somebody to fix. Capped, because a person who hands the session
+# back unchanged is not making progress and the run should say so rather than
+# keep asking.
+MAX_RESUMES = 2
 
 
 class ParamError(ValueError):
@@ -115,8 +124,15 @@ def frame_for(page: Any, step: Step | None = None) -> Any:
 
 
 def frame_text(frame: Any) -> str:
+    """The frame's visible text, for matching answers against and for evidence.
+
+    `html` rather than `body`, because a frameset's top document has no body and
+    `frame_for` falls back to it whenever a tenant names its frames something
+    other than "content". That read waits out the whole timeout and then reports
+    nothing, so the capped `html` read is both faster and the one that works.
+    """
     try:
-        return frame.inner_text("body")
+        return frame.inner_text("html", timeout=STEP_TIMEOUT_MS)
     except PlaywrightError:      # the frame navigated out from under the read
         return ""
 
@@ -361,8 +377,19 @@ class Replay:
         self.policy = policy
         self.evidence = evidence
         self.escalator = escalator
+        self._begin()
+
+    def _begin(self) -> None:
+        """Clear the state that belongs to one run.
+
+        Called from `run` as well as here, because every one of these is a budget
+        or a record for a single replay. A Replay used twice would otherwise
+        start with the previous run's re-entry budget already spent, and would
+        report recoveries it had not made.
+        """
         self._last_checkpoint: Checkpoint | None = None
         self._recovered: list[str] = []
+        self._degraded: list[Degradation] = []
         self._reentries = 0
         self._session_recoveries = 0
         # Counted per step. One popup per screen is normal; two on the same
@@ -377,7 +404,9 @@ class Replay:
         Parameters are bound and substituted into every step before the browser
         is touched, so a malformed call cannot leave a half-finished flow behind.
         """
+        self._begin()
         bound = bind_params(cap, dict(params or {}))
+        cap = _bind_targets(cap, bound)
         entry = substitute(cap.entry_url, bound, "entry_url") or cap.entry_url
         text = {s.index: substitute(s.text, bound, f"step {s.index} text") for s in cap.steps}
         urls = {s.index: substitute(s.url, bound, f"step {s.index} url") for s in cap.steps}
@@ -439,8 +468,10 @@ class Replay:
         recorder = self.evidence.step(step) if self.evidence else _NullStep()
         with recorder as record:
             record.risk = step.risk.value
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                last = attempt == MAX_ATTEMPTS
+            budget, attempt, resumes = MAX_ATTEMPTS, 0, 0
+            while attempt < budget:
+                attempt += 1
+                last = attempt == budget
                 # Before doing it again, check whether it already happened.
                 # Dismissing a popup often lands you where you were going, and
                 # repeating the click would walk straight back into it. On an
@@ -460,6 +491,7 @@ class Replay:
                     if not last and self._reobserve(step):
                         continue
                     if self._unresolved(cap, step, exc):
+                        budget, resumes = _after_resume(budget, resumes)
                         continue
                 except (PlaywrightTimeout, PlaywrightError) as exc:
                     # We found the control but it would not take the action:
@@ -471,9 +503,16 @@ class Replay:
                                  _expected(step), _excerpt(str(exc))) from exc
                 verdict = self._read(cap, step, record, outputs, last)
                 if verdict is _RETRY:
+                    budget, resumes = _after_resume(budget, resumes)
                     continue
                 return verdict          # ReplayResult, _Reenter, or None to go on
-        return None
+            # Every conclusive path above returns from inside the loop, so
+            # arriving here means the attempts ran out with the step unfinished.
+            # Returning None would tell `_one_pass` the step was done, and the
+            # run would end in success with this step's checkpoint never
+            # verified and, for a click, the click never sent.
+            raise _Abort(f"{step.action.value} did not complete in {attempt} attempts",
+                         _expected(step), _excerpt(page_text(self.page)))
 
     def _already_there(self, step: Step) -> bool:
         """Does this step's checkpoint hold right now, without acting?
@@ -585,7 +624,7 @@ class Replay:
 
     def _respond(
         self, cap: Capability, step: Step, condition: Condition, frame: Any,
-    ) -> ReplayResult | _Reenter:
+    ) -> ReplayResult | _Reenter | _Retry:
         if condition.kind == "failure":
             # Not retried. Trying a permission error again just reaches the
             # same screen more slowly. Someone has to fix it.
@@ -673,6 +712,17 @@ class Replay:
                            after=[_as_target(a) for a in resolution.attempts[:resolution.rank]])
         if resolution.degraded:
             record.extra["degraded_to_rank"] = resolution.rank
+            # Recorded once per step, not once per attempt. A retry and a
+            # whole-flow re-entry both resolve the same target again, and a
+            # degradation is a standing fact about that target against this
+            # application rather than an event, so repeating it would make a
+            # count of these spike on any run that merely met an interstitial.
+            fell_to = Degradation(
+                step=step.index, primary=step.target.primary.strategy,
+                won_by=resolution.winner.strategy, rank=resolution.rank,
+            )
+            if fell_to not in self._degraded:
+                self._degraded.append(fell_to)
         locator = resolution.locator
         value = text[step.index] or ""
 
@@ -684,7 +734,13 @@ class Replay:
         if step.action is ActionKind.CLICK:
             locator.click(timeout=SLOW_TIMEOUT_MS)
         elif step.action is ActionKind.TYPE:
-            record.text = value
+            # The template, never the value, whenever the value came from a
+            # parameter. Evidence is kept and reviewed, and a password typed into
+            # a form is still a password once it is a line in a log. Redacting
+            # the invocation but recording what was typed is all of the cost of
+            # redaction and none of the benefit. The parameters are already in
+            # `run_started`, with the redactor applied.
+            record.text = step.text if step.text and _PLACEHOLDER.search(step.text) else value
             locator.fill(value, timeout=SLOW_TIMEOUT_MS)
         elif step.action is ActionKind.SELECT:
             locator.select_option(value, timeout=SLOW_TIMEOUT_MS)
@@ -837,14 +893,15 @@ class Replay:
     def _succeed(self, cap: Capability, outputs: dict) -> ReplayResult:
         return self._finish(ReplayResult(
             outcome=Outcome.SUCCESS, capability=cap.name, outputs=outputs,
-            message="flow completed", recovered=list(self._recovered),
+            message="flow completed",
+            recovered=list(self._recovered), degraded=list(self._degraded),
         ))
 
     def _business(self, cap: Capability, rule: BusinessRule, outputs: dict) -> ReplayResult:
         return self._finish(ReplayResult(
             outcome=Outcome.BUSINESS_OUTCOME, capability=cap.name, outputs=outputs,
             business_code=rule.code, message=rule.message or rule.code,
-            recovered=list(self._recovered),
+            recovered=list(self._recovered), degraded=list(self._degraded),
         ))
 
     def _fail(
@@ -857,7 +914,8 @@ class Replay:
         return self._finish(ReplayResult(
             outcome=Outcome.FAILURE, capability=cap.name, failed_step=step,
             expected=expected, observed=observed,
-            message=message or "replay stopped", recovered=list(self._recovered),
+            message=message or "replay stopped",
+            recovered=list(self._recovered), degraded=list(self._degraded),
             escalated=escalated,
         ))
 
@@ -895,9 +953,12 @@ def replay(
 # helpers
 # --------------------------------------------------------------------------
 
-# Means "try this step again". Distinct from None, which means the step is
-# done and the run moves on.
-_RETRY = object()
+class _Retry:
+    """Means "try this step again". Distinct from None, which means the step is
+    done and the run moves on."""
+
+
+_RETRY = _Retry()
 
 
 class _Abort(Exception):
@@ -919,7 +980,7 @@ class _NullStep:
         self._record = StepRecord(index=-1, action="")
         return self._record
 
-    def __exit__(self, *exc: Any) -> bool:
+    def __exit__(self, *exc: Any) -> Literal[False]:
         return False
 
 
@@ -937,6 +998,42 @@ def _as_target(attempt: Any) -> Target:
             f"matched {attempt.matched}" if attempt.matched is not None else "no match"
         ),
     )
+
+
+def _bind_targets(cap: Capability, bound: dict[str, Any]) -> Capability:
+    """The capability again, with parameters filled into its target values.
+
+    Targets were the one place substitution never reached. A step could say what
+    to type and where to go in terms of the invocation, but not *which control*,
+    so a target meaning "the row whose first cell is {share_id}" went to the page
+    with the braces still in it and matched nothing. Any flow that has to pick one
+    row out of a table -- which is most of what a servicing console is -- needs
+    this.
+
+    A copy, because an artifact is loaded once and replayed many times, and the
+    next caller's share id is not this one's. Skipped entirely when no target
+    mentions a parameter, which is the common case.
+    """
+    if not any(_PLACEHOLDER.search(c.value)
+               for step in cap.steps if step.target
+               for c in step.target.candidates):
+        return cap
+    clone = copy.deepcopy(cap)
+    for step in clone.steps:
+        if step.target is None:
+            continue
+        step.target.candidates = [
+            replace(c, value=substitute(c.value, bound, f"step {step.index} target") or c.value)
+            for c in step.target.candidates
+        ]
+    return clone
+
+
+def _after_resume(budget: int, resumes: int) -> tuple[int, int]:
+    """A resume buys the step one more attempt, up to `MAX_RESUMES` of them."""
+    if resumes >= MAX_RESUMES:
+        return budget, resumes
+    return budget + 1, resumes + 1
 
 
 def _excerpt(text: str, limit: int = 200) -> str:
@@ -960,5 +1057,5 @@ __all__ = [
     "Replay", "replay", "ParamError", "Condition", "CONDITIONS",
     "bind_params", "substitute", "verify", "frame_for", "frame_text", "page_text",
     "STEP_TIMEOUT_MS", "SLOW_TIMEOUT_MS", "MAX_ATTEMPTS", "MAX_REENTRIES",
-    "MAX_SESSION_RECOVERIES",
+    "MAX_SESSION_RECOVERIES", "MAX_RESUMES",
 ]

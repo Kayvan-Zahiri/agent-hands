@@ -16,7 +16,10 @@ Run it with the fixture already up, or let it start its own:
 from __future__ import annotations
 
 import copy
+import json
+import shutil
 import subprocess
+import tempfile
 import sys
 import time
 import urllib.error
@@ -27,16 +30,18 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Frame, sync_playwright
 
 from agent_hands.escalation import Decision as OpDecision
 from agent_hands.escalation import Escalator, ScriptedConsole
-from agent_hands.perception import derive_targets, observe
+from agent_hands.evidence import Evidence
+from agent_hands.perception import Node, Observation, derive_targets, observe
 from agent_hands.policy import AppAllowance, Policy
 from agent_hands.recorder import load
 from agent_hands.replay import ParamError, Replay
 from agent_hands.schema import (
     ActionKind, BusinessRule, Capability, Checkpoint, Outcome, Output, Param, Risk, Step,
+    ValueType,
 )
 
 HOST = "127.0.0.1:8899"
@@ -58,6 +63,10 @@ class Case:
     code: str | None = None
     recovered: bool | None = None      # None = don't care
     outputs: dict | None = None        # None = don't care
+    # (step, the strategy that actually found the control), one entry per step
+    # that did not resolve on its primary. [] asserts a run did not degrade, and
+    # a list rather than a mapping so a step recorded twice is a mismatch.
+    degraded: list[tuple[int, str]] | None = None
 
 
 class Suite:
@@ -76,6 +85,10 @@ class Suite:
             problems.append(f"recovered={bool(result.recovered)} != {case.recovered}")
         if case.outputs is not None and result.outputs != case.outputs:
             problems.append(f"outputs {result.outputs!r} != {case.outputs!r}")
+        if case.degraded is not None:
+            seen = [(d.step, d.won_by.value) for d in result.degraded]
+            if seen != case.degraded:
+                problems.append(f"degraded {seen!r} != {case.degraded!r}")
         status = "ok  " if not problems else "FAIL"
         detail = result.business_code or result.message or ""
         print(f"  {status} {case.label:36} {result.outcome.value:17} {detail[:44]}")
@@ -83,6 +96,13 @@ class Suite:
             print(f"       recovered: {line}")
         if problems:
             self.failures.append(f"{case.label}: {'; '.join(problems)}")
+
+    def claim(self, label: str, ok: bool, detail: str) -> None:
+        """A case whose evidence is several runs rather than one result."""
+        self.ran += 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {label:36} {detail[:60]}")
+        if not ok:
+            self.failures.append(f"{label}: {detail}")
 
 
 def _fixture_up(url: str = BASE + "/") -> bool:
@@ -120,6 +140,15 @@ def _reset() -> None:
 # capabilities under test
 # --------------------------------------------------------------------------
 
+def _frame(obs: Observation, node: Node) -> Frame:
+    """The frame a node was seen in. `frame_for` returns None when a frame has
+    gone since the observation, which here means a broken fixture, not a case
+    the test is about."""
+    frame = obs.frame_for(node)
+    assert frame is not None, f"no frame {node.frame!r} in the observation"
+    return frame
+
+
 def form_capability(page: Any, entry: str = BASE + "/members/search") -> Capability:
     """The realistic shape: land on the form, type, click the submit control."""
     page.goto(entry)
@@ -134,9 +163,9 @@ def form_capability(page: Any, entry: str = BASE + "/members/search") -> Capabil
         steps=[
             Step(0, ActionKind.NAVIGATE, url=entry, risk=Risk.SAFE,
                  checkpoint=Checkpoint("text_present", "Member Search")),
-            Step(1, ActionKind.TYPE, target=derive_targets(field, obs.frame_for(field)),
+            Step(1, ActionKind.TYPE, target=derive_targets(field, _frame(obs, field)),
                  text="{member_id}", risk=Risk.REVERSIBLE),
-            Step(2, ActionKind.CLICK, target=derive_targets(button, obs.frame_for(button)),
+            Step(2, ActionKind.CLICK, target=derive_targets(button, _frame(obs, button)),
                  risk=Risk.REVERSIBLE,
                  checkpoint=Checkpoint("text_present", "Member Detail")),
         ])
@@ -154,7 +183,7 @@ def direct_capability(mode: str | None) -> Capability:
                     checkpoint=Checkpoint("text_present", "Member Detail"))])
 
 
-def read_capability(page: Any, on_screen: str, out: str, declared: str) -> Capability:
+def read_capability(page: Any, on_screen: str, out: str, declared: ValueType) -> Capability:
     """Land on a detail screen and read one cell back as an output.
 
     `declared` is supplied rather than inferred so a test can state a type the
@@ -173,7 +202,7 @@ def read_capability(page: Any, on_screen: str, out: str, declared: str) -> Capab
         steps=[
             Step(0, ActionKind.NAVIGATE, url=BASE + "/members/search?member_id={member_id}",
                  risk=Risk.SAFE, checkpoint=Checkpoint("text_present", "Member Detail")),
-            Step(1, ActionKind.READ, target=derive_targets(node, obs.frame_for(node)),
+            Step(1, ActionKind.READ, target=derive_targets(node, _frame(obs, node)),
                  extracts=out, risk=Risk.SAFE),
         ])
 
@@ -184,6 +213,15 @@ def run(page: Any, cap: Capability, params: dict, policy: Policy | None = None) 
     escalator = Escalator(console)
     policy = policy or Policy(apps=(AppAllowance(HOST),))
     return Replay(page, policy, escalator=escalator).run(cap, params)
+
+
+def read_across_members(page: Any, cap: Capability, out: str) -> dict[str, str]:
+    """The same read, run for three members whose answers differ from each other."""
+    seen = {}
+    for member in ("12345", "22887", "30021"):
+        _reset()
+        seen[member] = run(page, cap, {"member_id": member}).outputs.get(out)
+    return seen
 
 
 def run_with_operator(page: Any, cap: Capability, params: dict, actions: Any = None) -> Any:
@@ -205,6 +243,26 @@ def _click_search(page: Any) -> None:
     frame = [f for f in page.frames if f.name == "content"][0]
     frame.get_by_role("link", name="Search", exact=True).click()
     page.wait_for_timeout(600)
+
+
+def _corrects_on_the_third_try() -> Any:
+    """An operator who gets it right on their third consult.
+
+    Late on purpose. A control that cannot be found is only escalated on a
+    step's last attempt, because the earlier ones are spent looking again, so
+    the third consult is where a resume used to come back with no attempt left
+    to use it. Nothing here navigates: resume is only allowed while the last
+    confirmed checkpoint still holds, and a fix that moves the page is refused
+    by the case above.
+    """
+    consults = []
+
+    def act(page: Any) -> None:
+        consults.append(1)
+        if len(consults) >= 3:
+            page.get_by_role("textbox").first.fill("12345")
+
+    return act
 
 
 def _refusal(result: Any) -> str:
@@ -272,20 +330,39 @@ def main() -> int:
             suite.check(Case("operator moved the page, resume refused", Outcome.FAILURE), r)
             assert "page moved during handoff" in _refusal(r), _refusal(r)
 
-            # The case resume exists for: the operator fixes the environment and
-            # leaves the page where it was. Verification passes, control comes
-            # back, the step is retried and the flow finishes. This is the only
-            # place the whole handoff runs end to end rather than in pieces.
+            # Handing the session back is not the same as fixing it. The
+            # operator changes nothing, the control is still unfindable, and the
+            # step runs out of attempts. Success here would be the worst answer
+            # available: the click was never sent and the step's own checkpoint
+            # was never verified, so the run would report a flow it did not run.
             _reset()
             r = run_with_operator(page, early, {"member_id": "12345"}, None)
-            suite.check(Case("operator fixed it in place, run completes", Outcome.SUCCESS), r)
+            suite.check(Case("operator resumed without fixing anything", Outcome.FAILURE), r)
             assert _refusal(r) == "", f"resume should have verified, got {_refusal(r)}"
+            assert "did not complete" in r.message, r.message
+
+            # The case resume exists for, run end to end. The app came back "no
+            # member found", which this artifact carries no rule for, so the
+            # checkpoint fails and a person is asked. They correct the value on
+            # the screen the run was left on, so the last confirmed checkpoint
+            # still holds, resume verifies, and the retried click arrives.
+            _reset()
+            corrected = copy.deepcopy(cap)
+            corrected.name = "member_lookup_corrected"
+            corrected.business_rules = []
+            r = run_with_operator(page, corrected, {"member_id": "99999"},
+                                  _corrects_on_the_third_try())
+            suite.check(Case("operator corrected it, run completes", Outcome.SUCCESS), r)
+            # The outcome alone does not prove the retry happened -- before the
+            # attempt budget accounted for resumes, this reported success with
+            # the corrected value never submitted.
+            assert "member_id=12345" in page.url, page.url
 
             print("\nreading values back:")
             _reset()
             suite.check(
                 Case("reads a balance", Outcome.SUCCESS,
-                     outputs={"savings_balance": "4812.55"}),
+                     outputs={"savings_balance": "4812.55"}, degraded=[]),
                 run(page, read_capability(page, "4812.55", "savings_balance", "number"),
                     {"member_id": "12345"}))
             # A name where a number was declared. This is what a read that
@@ -302,6 +379,66 @@ def main() -> int:
                      outputs={"member_name": "Dolores Abernathy"}),
                 run(page, read_capability(page, "Dolores Abernathy", "member_name", "string"),
                     {"member_id": "12345"}))
+
+            # A read is the one action with nothing to contradict it, and the
+            # declared type only catches a wrong cell when that cell holds the
+            # wrong kind of value. A caption holds a string, and "string" asserts
+            # nothing. Members whose balances differ are the only thing in the
+            # system that can tell a read of the answer from a read of the label
+            # beside it, and only held-out members do it: the recorded balance is
+            # the recorded target, so the member it was recorded against agrees
+            # with a capability pointed anywhere.
+            balances = read_across_members(
+                page, read_capability(page, "4812.55", "savings_balance", "number"),
+                "savings_balance")
+            suite.claim("a value read differs per member",
+                        sorted(balances.values()) == ["119.02", "4812.55", "76230.18"],
+                        repr(balances))
+
+            # The same capability recorded one cell to the left. Every run
+            # succeeds, the declared type holds, and all three members are handed
+            # the caption as their balance. Worth running rather than describing:
+            # it is what the case above exists to catch.
+            captions = read_across_members(
+                page, read_capability(page, "Savings Balance", "savings_balance", "string"),
+                "savings_balance")
+            suite.claim("a caption read is the same for everyone",
+                        set(captions.values()) == {"Savings Balance"},
+                        repr(captions))
+
+            # A target that names the control in terms of the invocation. The
+            # engine substituted into text and urls but never into targets, so a
+            # flow that has to pick one row out of a table -- most of what a
+            # servicing console does -- could not be recorded at all.
+            _reset()
+            by_param = copy.deepcopy(cap)
+            by_param.name = "member_lookup_by_param"
+            for step in by_param.steps:
+                if step.action is ActionKind.TYPE and step.target:
+                    step.target.candidates = [
+                        replace(step.target.candidates[0], value="{field_label}"),
+                        *step.target.candidates[1:]]
+            by_param.params = [*by_param.params,
+                               Param("field_label", "string", True, "the field's caption")]
+            suite.check(Case("a target named by a parameter", Outcome.SUCCESS,
+                             degraded=[]),
+                        run(page, by_param,
+                            {"member_id": "12345", "field_label": "Member ID"}))
+
+            # Evidence is kept and reviewed, so what a step typed must not be a
+            # way to read back a credential the params block took care to hide.
+            _reset()
+            ev_root = Path(tempfile.mkdtemp(prefix="agent-hands-evidence-"))
+            ev = Evidence.start("member_lookup", root=ev_root,
+                                params={"member_id": "12345"})
+            Replay(page, Policy(apps=(AppAllowance(HOST),)), evidence=ev).run(
+                cap, {"member_id": "12345"})
+            typed = [json.loads(line).get("text") for line in
+                     (ev.dir / "run.jsonl").read_text().splitlines()
+                     if json.loads(line).get("action") == "type"]
+            suite.claim("a typed parameter stays out of the evidence",
+                        typed == ["{member_id}"], repr(typed))
+            shutil.rmtree(ev_root, ignore_errors=True)
 
             print("\nhard failures:")
             for mode, label in [("timeout", "session expired"),
@@ -322,8 +459,25 @@ def main() -> int:
                 if step.action is ActionKind.CLICK and step.target:
                     primary = step.target.candidates[0]
                     primary.__dict__["value"] = primary.value.replace("Search", "Submit Query")
-            suite.check(Case("primary strategy missed", Outcome.SUCCESS),
+            suite.check(Case("primary strategy missed", Outcome.SUCCESS,
+                             degraded=[(2, "role_name_in_region")]),
                         run(page, degraded, {"member_id": "12345"}))
+
+            # The same broken primary on a flow that starts over. Re-entry
+            # resolves every target again, so a degradation recorded per attempt
+            # rather than per step would report this one step twice, and anything
+            # counting them would read a recoverable interstitial as drift.
+            _reset()
+            lossy_degraded = form_capability(
+                page, BASE + "/members/search?fail=dialog_lossy")
+            lossy_degraded.name = "member_lookup_lossy_degraded"
+            for step in lossy_degraded.steps:
+                if step.action is ActionKind.CLICK and step.target:
+                    primary = step.target.candidates[0]
+                    primary.__dict__["value"] = primary.value.replace("Search", "Submit Query")
+            suite.check(Case("degraded flow that starts over", Outcome.SUCCESS,
+                             recovered=True, degraded=[(2, "role_name_in_region")]),
+                        run(page, lossy_degraded, {"member_id": "12345"}))
 
             # Now break every strategy: the recording genuinely no longer matches
             # the application, and there is nothing left to fall back to.
