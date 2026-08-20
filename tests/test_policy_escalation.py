@@ -25,7 +25,8 @@ from agent_hands.policy import (
     redact, redact_json,
 )
 from agent_hands.schema import (
-    ActionKind, Capability, Checkpoint, Risk, Step, infer_output_type, output_violation,
+    ActionKind, Capability, Checkpoint, Risk, Step, Strategy, Target, TargetSet,
+    infer_output_type, output_violation,
 )
 
 SEARCH = "http://127.0.0.1:8899/members/search"
@@ -614,3 +615,60 @@ class TestOutputTypes(unittest.TestCase):
         for sample in ("4812.55", "1,203.10", "$88.00", "12345", "0", "-5.5"):
             with self.subTest(sample=sample):
                 self.assertIsNone(output_violation(sample, infer_output_type(sample)))
+
+
+class TestRecordedSecrets(unittest.TestCase):
+    """A credential typed during a recording must not reach the artifact.
+
+    An artifact is read in a diff and committed. A password in one is a password
+    in version control, and nothing downstream gets it back out again.
+    """
+
+    def _capability(self, goal: str) -> Capability:
+        from agent_hands.recorder import RecordedAction, record
+
+        def target(value: str) -> TargetSet:
+            return TargetSet(candidates=[Target(Strategy.LABELLED_FIELD, value, None, 0.85, "")])
+
+        trajectory = [
+            RecordedAction(action=ActionKind.TYPE, targets=target("Operator ID:"),
+                           text="teller1", risk=Risk.REVERSIBLE),
+            RecordedAction(action=ActionKind.TYPE, targets=target("Password:"),
+                           text="hunter2", risk=Risk.REVERSIBLE),
+            RecordedAction(action=ActionKind.TYPE, targets=target("PIN:"),
+                           text="4417", risk=Risk.REVERSIBLE),
+            RecordedAction(action=ActionKind.TYPE, targets=target("Member ID:"),
+                           text="103001", risk=Risk.REVERSIBLE),
+        ]
+        return record(goal=goal, trajectory=trajectory, app_id="meridian-core",
+                      entry_url="https://example.test/signon")
+
+    def test_a_password_the_goal_never_mentions_is_still_hidden(self) -> None:
+        cap = self._capability("Sign on as teller1, then look up member 103001")
+        blob = json.dumps(cap.to_json())
+
+        self.assertNotIn("hunter2", blob)
+        self.assertNotIn("4417", blob)
+        self.assertIn("password", {p.name for p in cap.params})
+
+    def test_a_goal_that_names_the_password_does_not_smuggle_it_into_the_example(self) -> None:
+        # The route that catches you out: name it in the goal and it becomes a
+        # parameter on its own, carrying the literal forward as a helpful example.
+        cap = self._capability(
+            "Sign on as operator teller1 with password hunter2 and PIN 4417, "
+            "then look up member 103001")
+        blob = json.dumps(cap.to_json())
+
+        self.assertNotIn("hunter2", blob)
+        self.assertNotIn("4417", blob)
+        self.assertTrue(all(p.example is None for p in cap.params
+                            if "pass" in p.name or "pin" in p.name))
+
+    def test_an_ordinary_field_keeps_its_worked_example(self) -> None:
+        # The check has to stay narrow: an example is the most useful thing on a
+        # parameter, and blanking every one of them to be safe would be a loss.
+        cap = self._capability("Sign on as teller1, then look up member 103001")
+        member = next(p for p in cap.params if p.name == "member_id")
+
+        self.assertEqual("103001", member.example)
+

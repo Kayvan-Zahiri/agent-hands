@@ -262,6 +262,24 @@ def record(
     ]
     outputs = _outputs(actions)
 
+    # A credential typed during the run must not survive into the file, by any
+    # route: not as the text of a step, and not as the worked example on the
+    # parameter that replaced it. The second route is the one that catches you
+    # out -- name the password in the goal and it becomes a parameter on its own,
+    # carrying the literal forward as a helpful example.
+    secrets, secret_names = _hide_secrets(steps)
+    params = [
+        replace(p, example=None, description="Supplied per invocation. Never recorded.")
+        if p.name in secret_names else p
+        for p in params
+    ]
+    params += [
+        Param(name=n, type="string", required=True,
+              description="Supplied per invocation. Never recorded.")
+        for n in sorted(secret_names)
+        if n not in {p.name for p in params}
+    ]
+
     # The goal is rewritten with the same placeholders so the description does
     # not carry a real member id, but only for parameters the trajectory used:
     # a literal that appeared in the prose and nowhere else is not a parameter,
@@ -269,6 +287,9 @@ def record(
     # pass from marking bindings as used, whatever order it runs in.
     used = [_Binding(b.name, b.literal) for b in bindings if b.used]
     description = _sub(goal.strip(), used, "description") or goal.strip()
+    # The goal is prose a person wrote, and it may name the credential too.
+    for literal in secrets.values():
+        description = description.replace(literal, "[not recorded]")
 
     return Capability(
         name=name or _capability_name(goal, bindings),
@@ -283,6 +304,56 @@ def record(
         recorded_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         approved=False,
     )
+
+
+# Captions that mean "do not write this down". Matched against every candidate
+# a target carries, because which one is primary depends on the page.
+_SECRET_FIELD = re.compile(
+    r"pass\s*(word|code)|passphrase|\bpin\b|secret|security\s*(code|answer)|\botp\b|token",
+    re.IGNORECASE)
+
+
+def _hide_secrets(steps: list[Step]) -> tuple[dict[str, str], set[str]]:
+    """Turn anything typed into a credential field into a parameter.
+
+    The recorder's job is to write down what happened, and what happened
+    included typing a password. Writing *that* down is the one thing it must not
+    do: an artifact is reviewed in a diff and committed, so a literal here is a
+    credential in version control, and no amount of redaction downstream gets it
+    back out again.
+
+    It becomes a required parameter with no example, which is also the honest
+    contract -- the caller supplies it per invocation, and the evidence writer
+    already keeps it out of the log. Returns the names it created, mapped to the
+    literals it removed, so the caller can scrub them from the prose, and the
+    names of every parameter typed into such a field.
+    """
+    hidden: dict[str, str] = {}
+    names: set[str] = set()
+    for step in steps:
+        if step.action is not ActionKind.TYPE or not step.text or step.target is None:
+            continue
+        if not any(_SECRET_FIELD.search(c.value or "") for c in step.target.candidates):
+            continue
+        already = _ONE_PLACEHOLDER.fullmatch(step.text)
+        if already:
+            names.add(already.group(1))   # the goal parameterized it already
+            continue
+        name = _secret_name(step.target.candidates[0].value)
+        hidden[name] = step.text
+        names.add(name)
+        step.text = "{" + name + "}"
+    return hidden, names
+
+
+_ONE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _secret_name(caption: str) -> str:
+    """A parameter name from the caption of the field it was typed into."""
+    match = _SECRET_FIELD.search(caption or "")
+    word = re.sub(r"[^a-z0-9]+", "_", (match.group(0) if match else "secret").lower())
+    return word.strip("_") or "secret"
 
 
 def _to_step(index: int, action: RecordedAction, bindings: list[_Binding]) -> Step:
