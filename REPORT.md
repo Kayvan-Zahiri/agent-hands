@@ -300,6 +300,12 @@ Deliberately not built, in rough order of how much they would matter:
   ownership machine, the packet, the re-verification, is real. In a deployment
   the console is a queue, a review UI, an authenticated operator and a shared
   browser session. `OperatorConsole` is the seam; nothing above it changes.
+- **Skip-a-step and completed-by-hand are not implemented.** `Decision.SKIP` and
+  `Decision.COMPLETED` exist in the enum, but `replay.py` acts on `RESUME` and
+  stops on everything else, so both would silently abort. The console offers only
+  resume and abort rather than four buttons wired to two outcomes. Skipping a step
+  means not asserting its checkpoint either, and completed-by-hand means asserting
+  it without having acted, so neither is a one-line addition.
 - **Degradation aggregation.** A run that passes on a fallback is detected,
   recorded in the evidence and logged. Nothing rolls that up across runs to
   notice a capability has been limping for a week, which is where it would

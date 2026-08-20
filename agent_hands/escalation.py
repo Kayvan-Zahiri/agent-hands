@@ -170,12 +170,19 @@ class Reason(str, enum.Enum):
 
 
 class Decision(str, enum.Enum):
-    """What the person decided. `RESUME` is the only one that re-verifies."""
+    """What the person decided.
+
+    Only RESUME and ABORT are reachable today. replay.py acts on RESUME and stops
+    on everything else, so the console does not offer SKIP or COMPLETED: a button
+    that silently aborts is worse than no button. Both are kept here because they
+    are the right vocabulary if the engine ever implements them, and both are
+    listed in REPORT.md under Cuts.
+    """
 
     RESUME = "resume"        # they fixed it; continue, after re-checking position
-    SKIP = "skip"            # this step is not needed on this instance
     ABORT = "abort"          # stop; the run is recorded as a failure
-    COMPLETED = "completed"  # they finished the task by hand
+    SKIP = "skip"            # NOT OFFERED: would mean skipping the checkpoint too
+    COMPLETED = "completed"  # NOT OFFERED: would mean asserting without acting
 
 
 @dataclass
