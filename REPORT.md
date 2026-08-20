@@ -142,7 +142,7 @@ Each one is written to the log, because a system that quietly recovers is a
 system that can limp for months before anyone notices.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 19/19 passing, alongside 92 unit tests
+fixture and asserts the outcome of each, 22/22 passing, alongside 92 unit tests
 covering perception, policy, escalation and the CLI:
 
 | case | outcome | note |

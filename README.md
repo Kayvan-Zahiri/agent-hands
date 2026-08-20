@@ -10,6 +10,8 @@ what it produces is a reviewable artifact that a deterministic engine runs.
 
 ## Setup
 
+Python 3.10 or newer.
+
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install playwright anthropic
@@ -178,7 +180,7 @@ failures are a disagreement between the two.
 
 ## Tests
 
-111 in total, all against the real fixture with a real browser. No mocked pages:
+114 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
@@ -189,11 +191,11 @@ PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_polic
 # 10 more, covering the CLI
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
 
-# 19 end-to-end behaviors; starts its own fixture if one is not running
+# 22 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
-`tests/test_replay.py` collects nothing under pytest. Those 19 cases run only
+`tests/test_replay.py` collects nothing under pytest. Those 22 cases run only
 when the file is called directly, as above.
 
 | suite | covers |
