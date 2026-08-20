@@ -130,8 +130,8 @@ session re-entry, three flow re-entries. Each is written to the evidence log,
 because silent recovery is how a system degrades for months unnoticed.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 16/16 passing, alongside 80 unit tests
-covering perception, policy and escalation:
+fixture and asserts the outcome of each, 19/19 passing, alongside 92 unit tests
+covering perception, policy, escalation and the CLI:
 
 | case | outcome | note |
 |---|---|---|
@@ -204,8 +204,8 @@ What is *not* built is anything that aggregates that across runs: a threshold, a
 dashboard, a ticket when a capability has been limping for a week. The signal
 exists at the point of failure-to-be; nothing yet acts on it.
 
-The suite asserts both halves of this, because only asserting one is how the
-distinction rots:
+The suite asserts the success half. That a degraded run is *recorded* as degraded
+is checked by reading the log, not by a test, which is how the distinction rots:
 
 | case | expected |
 |---|---|
@@ -273,9 +273,16 @@ recorded against the artifact version.
 **Credentials are never handled.** A session timeout always goes to a person.
 
 **Redaction on the way out.** Account numbers, SSNs, emails and phone numbers are
-stripped from evidence and logs, and keys named `password`/`token`/`secret` are
-replaced wholesale. Values returned to the caller are not redacted: the caller
-asked for the balance. What nobody is entitled to is our copy on disk.
+stripped from evidence and logs when they appear in a form the patterns recognize:
+next to a caption, or under a key named `password`/`token`/`secret`. Values returned
+to the caller are not redacted, because the caller asked for the balance. What
+nobody is entitled to is our copy on disk.
+
+It does not hold for a bare value. `redact("12345")` returns it unchanged, and a
+TYPE step writes what it typed, so `run_started` records `member_id: [REDACTED]`
+and the step two lines later records `text: "12345"`. That is the cost of
+redaction without the benefit, and it is in the committed evidence. Redacting the
+typed text of a step is the fix, and it is not done.
 
 The unattended operator console never answers "resume" and never approves. An
 automatic yes would leave the escalation path untested in exactly the way that
@@ -339,20 +346,44 @@ Deliberately not built, in rough order of how much they would matter:
 - **Native desktop.** The accessibility abstraction was chosen partly because
   UIA and AX expose the same role-and-name vocabulary, so the targeting layer
   should carry over. No backend is implemented, so that is a claim, not a result.
-- **Business rules are hand-authored.** The discovery agent does not explore the
-  not-found or validation branches to learn them. It records one successful path.
-- **Discovery records one path.** No branch exploration, no self-verification of
-  the artifact by replaying it before handing it over. Replaying the draft once
-  against the recorded input would be a cheap, high-value addition.
 - **Concurrency.** One session, one run. No pooling, no locking across runs
   against the same record.
-- **Discovery explores one path.** The live run records the successful route and
-  stops. It does not probe the not-found or validation branches, so the business
-  rules that distinguish an answer from a fault are still authored by the
-  reviewer. That gap is visible in `evidence/README.md`: the recorded artifact
-  misclassified an unknown member as a failure until two rules were added by
-  hand. Having the agent deliberately try one bad input during recording would
-  close it, and is the first thing I would add.
+- **Discovery explores one path, and never checks its own work.** The live run
+  records the successful route and stops. It does not probe the not-found or
+  validation branches, so the business rules that separate an answer from a fault
+  are authored by the reviewer afterwards. `evidence/README.md` shows the cost:
+  the recorded artifact called an unknown member a failure until two rules were
+  added by hand. Nor does it replay the draft once before handing it over, so
+  "the goal was met" is the model's own word for it. Trying one bad input during
+  recording, and replaying the draft against the recorded input, are the first
+  two things I would add.
+
+- **A business rule matches unscoped text, and is checked before the
+  checkpoint.** `_match_business` looks for the rule's phrase anywhere in the
+  frame, at every step. A phrase that also appears on a healthy screen turns a
+  good run into a business outcome: give this artifact a rule whose text is
+  "Member" and a valid lookup of member 12345 comes back `business_outcome /
+  member_not_found`. The fixture's real rules are safe only because the same
+  person wrote the pages and the rules. Scoping a rule to the step whose
+  checkpoint failed is the fix; consulting the checkpoint first costs the full
+  wait on every not-found run, which is why it is ordered this way, and the
+  tradeoff is not worth it at this scoping.
+
+- **Approval is a boolean, not a binding.** `cli.py` says a later edit bumps the
+  artifact version and clears the approval. Nothing bumps it. An approved
+  artifact can be edited by hand, including promoting a step to `IRREVERSIBLE`,
+  and still replays. A content hash checked at load is the missing piece.
+
+- **A declared output is not enforced beyond its type.** A run whose steps never
+  extract anything still succeeds with `outputs: {}`, and a step extracting a
+  name nobody declared reaches the caller untyped and unchecked. The value is
+  also returned as the string it was read as, so a field declared `number`
+  arrives as `"4812.55"`.
+
+- **Parameters are strings end to end.** The CLI splits `--param k=v`, so
+  `integer`, `number` and `boolean` params can be declared but never supplied.
+  `BusinessRule.terminal` is likewise parsed, stored, documented, and read by
+  nothing.
 
 ### On the fixture
 

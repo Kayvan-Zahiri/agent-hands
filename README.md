@@ -119,17 +119,23 @@ failures are a disagreement between the two.
 
 ## Tests
 
-96 in total, all against the real fixture with a real browser. No mocked pages:
+111 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 80 unit tests: perception (needs the fixture up), policy, escalation, cli
+# 82 unit tests: perception (needs the fixture up), policy, escalation
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
-# 16 end-to-end behaviors; starts its own fixture if one is not running
+# 10 more, covering the CLI
+PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
+
+# 19 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
+
+`tests/test_replay.py` collects nothing under pytest. Those 19 cases run only
+when the file is called directly, as above.
 
 | suite | covers |
 |---|---|
