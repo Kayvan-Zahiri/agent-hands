@@ -142,7 +142,7 @@ Each one is written to the log, because a system that quietly recovers is a
 system that can limp for months before anyone notices.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 22/22 passing, alongside 92 unit tests
+fixture and asserts the outcome of each, 26/26 passing, alongside 92 unit tests
 covering perception, policy, escalation and the CLI:
 
 | case | outcome | note |
@@ -157,41 +157,15 @@ covering perception, policy, escalation and the CLI:
 | permission denied | failure | no retry; entitlements are a person's job |
 | application error | failure | retried once, then failed |
 | primary strategy missed | success | resolved on a fallback, degradation recorded |
+| degraded flow that starts over | success | one degradation for the step, not one per attempt |
+| operator resumed without fixing anything | failure | attempts ran out; the step never completed |
+| operator corrected it | success | resume re-verified, the retried step arrived |
 | every strategy missed | failure | `unresolved control`, evidence captured |
 | host not allowlisted | failure | refused before the browser opened |
 | unapproved draft | failure | refused |
 | read-only lane vs a write step | failure | refused |
 | mistyped parameter | raises | caller's bug, not a replay outcome |
 
-The two popup cases are listed separately because they look identical and need
-opposite handling, and getting it wrong fails quietly.
-
-One popup just sits on top of the page. Close it and carry on where you were.
-
-The other one throws the request away, and takes the member number you typed with
-it. Carrying on there submits an empty form, and the run then blames whichever
-step fails next instead of the popup that caused it. That one has to start the
-flow over.
-
-The engine tells them apart by asking one question after closing the popup: is
-this step's goal already met? If yes, closing the popup was enough. If no, the
-typed input is gone. `_dismiss` also confirms the popup actually went away,
-rather than assuming the click worked.
-
-This turned up a real bug, worth writing down because it was a correctness
-problem rather than an untidiness. After recovering from something, the engine
-used to redo the step's action. For a popup, that meant walking straight back
-into the popup. On a step marked `IRREVERSIBLE`, it would have meant
-**submitting a payment twice**.
-
-The fix is to ask whether the recovery already got us where the step was going,
-before doing anything again:
-
-```python
-if attempt > 1 and step.checkpoint is not None and self._already_there(step):
-    record.extra["satisfied_by_recovery"] = True
-    return None
-```
 
 ## Heterogeneity & multi-tenant
 
@@ -220,13 +194,22 @@ warning naming both.
 target degraded to nth_of_role ('link[0]'); primary was role_name
 ```
 
-What is **not** built is anything that adds those up across runs. No threshold,
-no dashboard, no ticket when a capability has been limping for a week. The
-warning is written down every time; nothing reads it back.
+The result carries it too. A step that resolved on a fallback appears under
+`degraded`, naming the strategy that was recorded, the one that actually found
+the control, and how far down the list it sat:
 
-The test suite checks that a degraded run still succeeds. It does not check that
-the run was *recorded* as degraded. That part is verified by a person reading the
-log, which is exactly how a distinction like this quietly stops being true:
+```json
+"degraded": [{"step": 1, "primary": "role_name", "won_by": "nth_of_role", "rank": 2}]
+```
+
+Without that field a clean run and a limping one are the same object with
+different log files. `tests/test_replay.py` pins the strategy that won, so a
+change that starts resolving the control some other way turns the case red
+instead of passing quietly.
+
+What is **not** built is anything that adds those up across runs. No threshold,
+no dashboard, no ticket when a capability has been limping for a week. Every run
+says so; nothing counts them:
 
 | case | expected |
 |---|---|
@@ -259,6 +242,13 @@ allowed to act, because neither side knows what is on screen. A wrapper around
 the page refuses any call from whoever is not the current owner. An old reference
 raises an error instead of quietly typing into a screen a person is halfway
 through fixing.
+
+**A resume gets the attempt it asked for.** Escalation for a control that cannot
+be found only ever happens on a step's last attempt, because the earlier ones are
+spent looking again. So handing back "fixed" used to arrive with no attempt left,
+the step fell out of its loop unfinished, and the run reported success with the
+click never sent. A resume now extends the step's budget, twice at most, and a
+step whose attempts run out is a failure rather than a step quietly skipped.
 
 **Taking control back means checking, not assuming.** While the person had it
 they may have gone somewhere else entirely, or finished the job themselves. So on
@@ -323,13 +313,6 @@ The unattended operator console never answers "resume" and never approves. An
 automatic yes would leave the escalation path untested in exactly the way that
 matters.
 
-One bug worth naming, because it was silent and it was a *safety* bug. Saving
-wrote out the whole capability, but loading rebuilt it one field at a time, so
-any field the loader had not been told about simply vanished. Approving a
-capability loads it and saves it again. So approving an artifact **deleted its
-business rules**, and that loss turned up much later looking like an unrelated
-step failure. Any field added to `Capability` has to be added to the loader in
-the same change, and the comment there now says so.
 
 ## Cuts
 
@@ -363,15 +346,13 @@ Deliberately not built, in rough order of how much they would matter:
   while a read has nothing to contradict it. Anchoring a read to its label is
   what closes this.
 
-- **Resuming cannot verify on an artifact we actually recorded.** Handing control
-  back is only allowed once we re-confirm the last screen we knew we were on. But
-  recording only ever attaches a check to the *final* step, so when an earlier
-  step fails there is nothing confirmed to compare against, and resume refuses
-  every time. Two gaps that are individually reasonable meet here and close the
-  path. Add a check to a middle step by hand and the whole handoff runs: the
-  person fixes the page, hands it back, the screen is re-confirmed, the step is
-  retried and the flow finishes. `tests/test_replay.py` covers all three cases.
-  Having the recorder attach a check per step is the fix.
+  The suite now at least *detects* it. `tests/test_replay.py` replays a read for
+  three members whose balances differ and requires three different answers, so a
+  capability recorded one cell to the left -- which hands every member the
+  caption "Savings Balance" as their balance, with every check in the system
+  passing -- turns the case red. Replaying against the member it was recorded
+  against cannot do this: the recorded balance is the recorded target, so that
+  one member agrees with a capability pointed almost anywhere.
 
 - **No identity, no audit trail.** The rules control *what* may run, never *who*
   asked for it. Limiting what each caller may do, and keeping a record of who
@@ -382,23 +363,7 @@ Deliberately not built, in rough order of how much they would matter:
   resume. In a real deployment the console would be a work queue, a review
   screen, a logged-in operator and a shared browser. `OperatorConsole` is the one
   piece that gets replaced. Nothing behind it changes.
-- **"Skip this step" and "I did it myself" are not built.** Both exist as names
-  in the code, but replay only acts on "resume" and stops on everything else, so
-  either would quietly abort. The console therefore offers two buttons rather
-  than four buttons wired to two behaviors. Neither is a one-liner: skipping a
-  step means also not checking whether it worked, and "I did it myself" means
-  checking that it worked without having done anything.
-- **Nothing adds up the warnings.** A run that only passed because it fell back
-  is spotted, logged and saved every single time. Nothing reads those back across
-  many runs to notice that a capability has been limping for a week, which is
-  where somebody would actually act on it.
-- **Per-bank corrections are not merged.** The file has a slot for which bank's
-  version of the app this is. The code that would let one recording carry small
-  corrections for each bank is not written.
-- **Desktop apps.** Reading the screen the way a screen reader does was chosen
-  partly because Windows and macOS expose desktop apps the same way, in terms of
-  what each thing is and what it is called. So the finding-things layer should
-  carry across. Nothing is built for it, so that is a claim, not a result.
+
 - **One run at a time.** One browser session, one run. Nothing shares sessions,
   and nothing stops two runs touching the same customer record at once.
 - **Discovery explores one path, and never checks its own work.** The live run
@@ -411,32 +376,6 @@ Deliberately not built, in rough order of how much they would matter:
   recording, and replaying the draft against the recorded input, are the first
   two things I would add.
 
-- **A business rule matches unscoped text, and is checked before the
-  checkpoint.** `_match_business` looks for the rule's phrase anywhere in the
-  frame, at every step. A phrase that also appears on a healthy screen turns a
-  good run into a business outcome: give this artifact a rule whose text is
-  "Member" and a valid lookup of member 12345 comes back `business_outcome /
-  member_not_found`. The fixture's real rules are safe only because the same
-  person wrote the pages and the rules. Scoping a rule to the step whose
-  checkpoint failed is the fix; consulting the checkpoint first costs the full
-  wait on every not-found run, which is why it is ordered this way, and the
-  tradeoff is not worth it at this scoping.
-
-- **Approval is a boolean, not a binding.** `cli.py` says a later edit bumps the
-  artifact version and clears the approval. Nothing bumps it. An approved
-  artifact can be edited by hand, including promoting a step to `IRREVERSIBLE`,
-  and still replays. A content hash checked at load is the missing piece.
-
-- **A declared output is not enforced beyond its type.** A run whose steps never
-  extract anything still succeeds with `outputs: {}`, and a step extracting a
-  name nobody declared reaches the caller untyped and unchecked. The value is
-  also returned as the string it was read as, so a field declared `number`
-  arrives as `"4812.55"`.
-
-- **Parameters are strings end to end.** The CLI splits `--param k=v`, so
-  `integer`, `number` and `boolean` params can be declared but never supplied.
-  `BusinessRule.terminal` is likewise parsed, stored, documented, and read by
-  nothing.
 
 ### On the fixture
 
