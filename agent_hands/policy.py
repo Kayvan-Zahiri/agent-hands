@@ -450,8 +450,17 @@ def classify_risk(action: str, *, url: str = "", label: str = "") -> Risk:
     if action in ("type", "select"):
         return Risk.REVERSIBLE
     if action == "click":
+        # Phrases rather than bare words, because the bare ones over-match: a
+        # menu link reading "Open New Share" navigates and writes nothing, while
+        # the button reading "Open Share" on the confirmation screen creates an
+        # account. Added after a real recording: this target's most restricted
+        # action, the one that needs a supervisor, is a button reading "Apply
+        # Hold", and none of the original words appear in it -- so freezing
+        # somebody's account classified as reversible and the gate never ran.
         writing = ("submit", "save", "delete", "remove", "approve", "post",
-                   "transfer", "pay", "send", "confirm", "close account")
+                   "transfer", "pay", "send", "confirm", "close account",
+                   "apply hold", "place hold", "open share", "freeze",
+                   "release hold", "override")
         if any(word in text for word in writing):
             return Risk.IRREVERSIBLE
         # A search button is a click that writes nothing. Defaulting clicks to

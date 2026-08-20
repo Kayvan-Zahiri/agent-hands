@@ -672,3 +672,30 @@ class TestRecordedSecrets(unittest.TestCase):
 
         self.assertEqual("103001", member.example)
 
+
+class TestWriteVocabulary(unittest.TestCase):
+    """The words that decide whether a click is gated.
+
+    Found by recording against a real servicing console: its most restricted
+    action, the one that needs a supervisor, is a button reading "Apply Hold",
+    and none of the original words appear in it. Freezing somebody's account
+    classified as reversible and the gate never ran.
+    """
+
+    def risk(self, label: str) -> Risk:
+        from agent_hands.policy import classify_risk
+        return classify_risk("click", url="https://bank.test/members/1/hold", label=label)
+
+    def test_the_buttons_that_write_are_gated(self) -> None:
+        for label in ("Apply Hold", "Open Share", "Post Transfer", "Save Changes"):
+            with self.subTest(label=label):
+                self.assertIs(Risk.IRREVERSIBLE, self.risk(label))
+
+    def test_navigating_to_the_form_is_not_a_write(self) -> None:
+        # The reason these are phrases and not bare words. A menu link reading
+        # "Open New Share" opens a form; the button reading "Open Share" on the
+        # confirmation screen opens an account.
+        for label in ("Open New Share", "Place Account Hold", "Search", "Continue"):
+            with self.subTest(label=label):
+                self.assertIs(Risk.REVERSIBLE, self.risk(label))
+
