@@ -2,13 +2,13 @@
   "schema_version": "1.0",
   "artifact_version": 1,
   "name": "meridian_balance_recorded",
-  "description": "Sign on as operator {operator} with password password at branch {branch}, then look up member {member_id} and read the savings balance for account {member_id}-MMKT-2",
+  "description": "Sign on as operator {operator} with [not recorded] [not recorded] at branch {branch}, then look up member {member_id} and read the savings balance",
   "app_id": "meridian-core",
   "app_variant": null,
   "entry_url": "https://web-sample.interface-hiring.com/signon",
   "approved": true,
   "recorded_by": "discovery-agent",
-  "recorded_at": "2026-08-20T21:09:57+00:00",
+  "recorded_at": "2026-08-20T21:54:10+00:00",
   "params": [
     {
       "name": "operator",
@@ -30,13 +30,20 @@
       "required": true,
       "description": "Recorded from the goal; used in step[6].text.",
       "example": "103001"
+    },
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "description": "Supplied per invocation. Never recorded.",
+      "example": null
     }
   ],
   "outputs": [
     {
       "name": "savings_balance",
       "type": "number",
-      "description": "Read from the page. Example observed at record time: $22.37."
+      "description": "Read from the page. Example observed at record time: $780.50."
     }
   ],
   "business_rules": [],
@@ -161,7 +168,7 @@
           }
         ]
       },
-      "text": "password",
+      "text": "{password}",
       "url": null,
       "risk": "reversible",
       "checkpoint": null,
@@ -224,7 +231,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Select branch MAIN-001"
+      "note": "Select branch"
     },
     {
       "index": 4,
@@ -282,7 +289,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Submit sign on"
+      "note": "Sign on"
     },
     {
       "index": 5,
@@ -340,7 +347,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Go to member inquiry to look up member"
+      "note": "Go to member inquiry"
     },
     {
       "index": 6,
@@ -398,7 +405,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Enter member number to search"
+      "note": "Enter member number"
     },
     {
       "index": 7,
@@ -456,7 +463,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Search for the member"
+      "note": "Search for member"
     },
     {
       "index": 8,
@@ -514,7 +521,7 @@
       "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
-      "note": "Open member detail with accounts"
+      "note": "Open member detail"
     },
     {
       "index": 9,
@@ -523,28 +530,28 @@
         "candidates": [
           {
             "strategy": "role_name",
-            "value": "cell \"$22.37\"",
+            "value": "cell \"$780.50\"",
             "frame": null,
             "durability": 0.95,
             "note": "unique by role and name across the whole page"
           },
           {
             "strategy": "role_name_in_region",
-            "value": "cell \"$22.37\"",
+            "value": "cell \"$780.50\"",
             "frame": "main",
             "durability": 0.9,
             "note": "role and name, scoped to frame 'main'"
           },
           {
             "strategy": "nth_of_role",
-            "value": "cell[23]",
+            "value": "cell[19]",
             "frame": "main",
             "durability": 0.4,
-            "note": "index 23 of 47 cell controls in the frame; breaks if the page reorders"
+            "note": "index 19 of 63 cell controls in the frame; breaks if the page reorders"
           },
           {
             "strategy": "dom_path",
-            "value": "body > table > tbody > tr:nth-of-type(3) > td > table:nth-of-type(2) > tbody > tr:nth-of-type(3) > td:nth-of-type(3)",
+            "value": "body > table > tbody > tr:nth-of-type(3) > td > table:nth-of-type(2) > tbody > tr:nth-of-type(2) > td:nth-of-type(3)",
             "frame": "main",
             "durability": 0.2,
             "note": "structural path; any layout change invalidates it"
@@ -560,7 +567,7 @@
           },
           {
             "strategy": "point",
-            "value": "779,234",
+            "value": "781,210",
             "frame": "main",
             "durability": 0.05,
             "note": "viewport coordinates; not resolvable, recorded for human review only"
@@ -575,7 +582,7 @@
         "value": "SHARES / BALANCES"
       },
       "extracts": "savings_balance",
-      "note": "Balance for account 103001-MMKT-2"
+      "note": "Regular Shares (savings) balance for the member"
     }
   ]
 }

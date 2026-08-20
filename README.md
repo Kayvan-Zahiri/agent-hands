@@ -1,7 +1,8 @@
 # agent-hands
 
 Record a back-office web flow once with a model driving. Replay it thousands of
-times with no model involved.
+times with no model involved. Pointed at a real credit-union servicing console
+with no API, where the only way in is the screen.
 
 The bet is that exploration and execution are different problems. Exploration is
 expensive, non-deterministic, and worth a person's attention. Execution is none
@@ -19,9 +20,97 @@ python3 -m venv .venv
 ```
 
 Recording needs `ANTHROPIC_API_KEY`. Replay does not, and that asymmetry is the
-whole point.
+whole point. Put the key in `.env` (gitignored; see `.env.example`) and load it
+only for the command that needs it:
 
-## Run it
+```bash
+set -a; . ./.env; set +a
+```
+
+## The demo, against the hosted target
+
+Everything below runs against **MERIDIAN CORE**
+([web-sample.interface-hiring.com](https://web-sample.interface-hiring.com/)), a
+credit-union servicing console with no API: server-rendered tables, no test ids,
+and a hidden per-transaction token on every write.
+
+Seven capabilities are committed under `capabilities/meridian/`, each in two
+versions — one a model recorded, one written by hand — and all of them approved.
+**No key is needed to run any of this.**
+
+```bash
+export PYTHONPATH=.
+alias agent-hands=".venv/bin/python -m agent_hands"
+
+# read a balance off the live system, with no model in the loop
+agent-hands replay capabilities/meridian/meridian_balance_recorded.json \
+  --param operator=teller1 --param password=password --param branch=MAIN-001 \
+  --param member_id=103001 --unattended
+
+# a teller attempting a supervisor-only action: an answer, not a crash (exit 3)
+agent-hands replay capabilities/meridian/meridian_place_hold.json \
+  --param operator=teller1 --param password=password --param branch=MAIN-001 \
+  --param member_id=103001 --param share_id=103001-MMKT-3 \
+  --param reason=LEGAL --param notes=demo --unattended
+```
+
+### The console
+
+One page: ask for a job in plain words, watch it drive the real application, and
+read back what it did step by step. It also puts a real recorded session beside
+real replays of the file that session produced, which is the argument for the
+whole design in two columns.
+
+```bash
+PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 \
+  --confirmable meridian_funds_transfer
+```
+
+Then open <http://127.0.0.1:8080/>.
+
+`--confirmable` names the capabilities whose irreversible steps a caller may
+authorize. Anything not named there stops and asks for a person. Moving money
+also needs the confirmation box ticked, which sends a digest of the exact
+arguments — change any of them and the confirmation stops being valid.
+
+### The API underneath it
+
+```bash
+curl -s localhost:8080/capabilities | jq '.capabilities[].id'
+
+curl -s -X POST localhost:8080/capabilities/meridian_member_balance/invocations \
+  -H 'Content-Type: application/json' -d '{"args":{
+    "operator":"teller1","password":"password","branch":"MAIN-001",
+    "member_id":"103001","share_id":"103001-MMKT-3"}}' | jq '.result.outputs'
+```
+
+All three outcomes are HTTP 200 and carry `outcome` in the body. A caller that
+reads "no such member" as an HTTP error has thrown away the distinction the
+engine exists to make. Only the caller's own mistakes are 4xx.
+
+### Recording one yourself
+
+Needs a key. `--allow-writes` is a person at the keyboard saying yes for one
+session; without it a flow that writes cannot be recorded at all, because the
+gate replay uses asks for an approved artifact and there is not one yet.
+
+```bash
+set -a; . ./.env; set +a
+agent-hands record \
+  --goal "Sign on as operator teller1 with password password at branch MAIN-001, \
+then look up member 103001 and read the savings balance" \
+  --url https://web-sample.interface-hiring.com/signon \
+  --app-id meridian-core --name my_capability --max-turns 20 \
+  --out /tmp/my_capability.json
+
+agent-hands show    /tmp/my_capability.json     # what it recorded, and what it rejected
+agent-hands approve /tmp/my_capability.json     # nothing replays until this
+```
+
+`tools/build_meridian.py` regenerates the hand-authored seven, deriving every
+target from the live screens with the same code the recorder uses.
+
+## Against the local fixture
 
 Start the fixture, a deliberately hostile legacy app (frameset, table layout, no
 `<label>` elements, server-generated ids):
@@ -132,7 +221,11 @@ place to look for the working case without driving a browser by hand.
 | `agent_hands/policy.py` | surface, action and risk gates; redaction |
 | `agent_hands/escalation.py` | session ownership and the handoff to a person |
 | `agent_hands/evidence.py` | per-run log, screenshots, accessibility snapshots |
-| `fixture/app.py` | the target application, with switchable failure modes |
+| `agent_hands/api.py` | the capability catalog over HTTP, and the run registry |
+| `agent_hands/dashboard.html` | the console: ask for a job, watch it, read what it did |
+| `tools/build_meridian.py` | authors the hand-written seven from the live screens |
+| `capabilities/meridian/` | seven functions, each recorded by a model and by hand |
+| `fixture/app.py` | a local stand-in, with switchable failure modes |
 
 ## The fixture
 
@@ -180,23 +273,24 @@ failures are a disagreement between the two.
 
 ## Tests
 
-118 in total, all against the real fixture with a real browser. No mocked pages:
+126 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 82 unit tests: perception (needs the fixture up), policy, escalation
+# 87 unit tests: perception (needs the fixture up), policy, escalation, recorder
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
 # 10 more, covering the CLI
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
 
-# 26 end-to-end behaviors; starts its own fixture if one is not running
+# 29 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
-`tests/test_replay.py` collects nothing under pytest. Those 26 cases run only
-when the file is called directly, as above.
+`tests/test_replay.py` collects nothing under pytest. Those 29 cases run only
+when the file is called directly, as above. `pytest tests -q` reports 97,
+which is the same 87 and 10 counted together.
 
 | suite | covers |
 |---|---|

@@ -32,7 +32,7 @@ find the same field from another direction. It finds the *next row's* field. So
 every field on every MERIDIAN screen matched twice, was rejected, and fell
 through to counting controls by position at durability 0.4 — which is exactly the
 brittleness the design exists to avoid. Its docstring defended the behavior, and
-92 tests passed.
+every test passed.
 
 It was invisible because of the *shape* of the old fixture, not because of
 anything in the engine. That fixture's search form is a single row, and the row
@@ -153,41 +153,116 @@ machine, the intervention packet, the re-check on resume. The API uses the
 unattended console: stop, and say a person was needed. Approving automatically
 would wave through the steps the gate exists for.
 
+## What recording against it actually found
+
+Every function in §2.1 now has a model-produced artifact as well as a
+hand-authored one. Getting there needed two changes to the recorder, and turned
+up three faults that only appear when a model drives a system with money in it.
+
+**The discovery loop could not use a dropdown.** Four of the seven flows need
+one, so the model could never have completed them however well it reasoned.
+`select_option` takes the dropdown's number and the option as it reads on screen,
+and the value that reaches the artifact is looked up from the DOM rather than
+taken from the model — because an option's label here carries live data,
+`"MMKT-3 - Money Market ($7.97)"`, and recording the label would bake one
+member's balance into a capability meant to run for everybody.
+
+**A flow that writes could not be recorded at all.** An irreversible step is
+gated on the artifact having been approved, and during a recording the artifact
+is what the session is trying to produce. The two moments are asking different
+questions: replay asks whether a reviewer signed the file, recording asks whether
+a person is watching. `--allow-writes` is that person saying yes for one session.
+
+**The recorder wrote the password into the artifact.** Signing on types a
+credential, and the recorder's job is to write down what happened. An artifact is
+read in a diff and committed, so that is a credential in version control. Two
+routes, and the second is the one that catches you out: name the password in the
+goal and it becomes a parameter on its own, carrying the literal forward as a
+helpful `example`. Both are closed and the description is scrubbed too.
+
+**Freezing an account did not count as a write.** `classify_risk` knew *submit,
+save, delete, post, transfer*. This target's most restricted action — the one the
+brief singles out as needing a supervisor — is a button reading **"Apply Hold"**,
+and opening an account is **"Open Share"**. Neither matched, so both classified
+as reversible and the gate that exists for exactly these two never ran. Fixed
+with phrases rather than bare words, because a menu link reading "Open New Share"
+navigates and writes nothing while the button on the confirmation screen opens an
+account.
+
+Recording also corrected three things I had guessed wrong when authoring by hand:
+Update Member has no review step at all, the hold's post button reads "Apply
+Hold" and not "Place Hold", and open-share refuses a deposit under five dollars,
+which is a business answer rather than a fault.
+
+## The failure worth reading
+
+`evidence/...211103Z_meridian-balance-recorded_2955f5` returns `success` and a
+plausible number, and it is wrong.
+
+The capability is named `savings_balance`. It was recorded against member
+103001's **Money Market** account and replayed for member 100234, where it
+returned `$198.04` — that member's **Share Draft (Checking)** balance.
+
+| | recorded member | a different member |
+|---|---|---|
+| returned | `$22.37` | `$198.04` |
+| which account | Money Market | **Share Draft (Checking)** |
+| outcome | `success` | `success` |
+| declared type holds | yes | yes |
+| `degraded` | `[]` | `role_name` → `nth_of_role` |
+
+Nothing in the run contradicts it. The checkpoint held. The declared type is
+`number` and `$198.04` is a number. The recorded target for that read was
+`cell "$22.37"` — the answer from the recording — so it can only ever match the
+member it was recorded against, and every other member falls through to counting
+cells in a table whose length varies per member.
+
+One field separates the two runs. That is the argument for having added it, and
+it is also the argument for label-relative reads being the next thing to build:
+detection is not the same as prevention.
+
+The transfer has the same shape structurally. Its confirmation read recorded
+`cell "CN480134"` as the primary target, and every run issues a new number, so
+that read degrades on every replay by construction.
+
 ## What I left out, and what I would build next
 
-- **No recording against MERIDIAN.** No API credential was available, and
-  `discover.py` has no `select` tool at all, which four of the seven flows need.
-  The artifacts are hand-authored trajectories whose *targets* are still derived
-  from the live screens by the same code the recorder uses, and `recorded_by`
-  says so on every one. The missing tool is three lines; the reason it is a cut
-  rather than an oversight is that the parameter must be the option value, not
-  the visible label, because the labels embed live balances.
-- **Reads still have no label-relative target in the engine.** A value cell's
-  derived primary target is the value itself, so it only ever matches the member
-  it was recorded against. The artifacts carry an xpath as a workaround. This is
-  the first thing I would build, and it is the same idea `LABELLED_FIELD` already
-  implements for form fields.
-- **No regression test at home for the caption fix**, because the fixture has no
-  stacked-caption form. This is the cut I like least: the bug was hidden by the
-  fixture's shape, and I have not changed that shape.
-- **The condition table is still a module constant.** Making it per-app
-  configuration is what turns "we edited the engine for the second target" into
-  "we adapted by configuration".
-- **Open Share, Update Member and Place Hold are authored but only lightly run.**
-  Sign-on, inquiry, balance and transfer are exercised end to end.
-- **No chatbot and no dashboard.** The dashboard is mostly a view over the
-  evidence directory, and the join key already exists: a run id *is* the evidence
-  directory name.
+- **Reads have no label-relative target in the engine.** The failure above is
+  this, and it is the first thing I would build. The idea already exists for form
+  fields as `LABELLED_FIELD`; a value cell needs the same thing anchored to the
+  row it is in. The artifacts carry an xpath as a workaround, which works and
+  does not generalize.
+- **No regression test at home for the caption fix or the dropdown tool**,
+  because the local fixture has no stacked-caption form and no `<select>` at all.
+  This is the cut I like least: both bugs were hidden by the fixture's shape, and
+  I have not changed that shape.
+- **The condition table is still a module constant.** `timeout` and `permission`
+  remain misclassified against this target because the engine looks for "session
+  has expired" and MERIDIAN says "your session has timed out". Making that table
+  per-app configuration is what turns "we edited the engine for the second
+  target" into "we adapted by configuration", and it is the largest remaining
+  piece of that argument.
+- **`classify_risk` over-classifies on the transfer.** Every click on a page
+  whose URL contains "transfer" is irreversible, which is fail-safe and noisy.
+- **The confirmation gate is a deliberate-action gate, not an authorization
+  one.** Nothing knows who is asking. Real authorization needs identity, which
+  this system does not have.
+- **The operator console is still stubbed.** The escalation path is real and
+  demonstrated — a transfer with nobody authorized to approve it stops at the
+  post step and leaves an intervention packet with screenshots — but a person
+  answers it at a terminal, not in the console.
 
 ## Running it
 
 ```bash
-PYTHONPATH=. .venv/bin/python tools/build_meridian.py        # author the seven
+# no credentials needed for any of this
 PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 \
-    --confirmable meridian_funds_transfer
+    --confirmable meridian_funds_transfer      # then open localhost:8080
+
+PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 92 unit, 28 end-to-end against a real browser, nothing mocked. The rule
+Suites: 97 unit, 29 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash
