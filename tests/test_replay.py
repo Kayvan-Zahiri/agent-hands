@@ -21,7 +21,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from agent_hands.escalation import Decision as OpDecision
 from agent_hands.escalation import Escalator, ScriptedConsole
 from agent_hands.perception import derive_targets, observe
 from agent_hands.policy import AppAllowance, Policy
+from agent_hands.recorder import load
 from agent_hands.replay import ParamError, Replay
 from agent_hands.schema import (
     ActionKind, BusinessRule, Capability, Checkpoint, Outcome, Output, Param, Risk, Step,
@@ -185,6 +186,31 @@ def run(page: Any, cap: Capability, params: dict, policy: Policy | None = None) 
     return Replay(page, policy, escalator=escalator).run(cap, params)
 
 
+def run_with_operator(page: Any, cap: Capability, params: dict, actions: Any = None) -> Any:
+    """One replay where a person takes the session, does something, and resumes.
+
+    `actions` runs against the same live page the automation was using, which is
+    the point of escalating rather than failing: the operator inherits the login,
+    the frameset and the half-filled form. A test that simulated the handoff with
+    a flag would not exercise the thing that decides whether resuming is safe.
+    """
+    console = ScriptedConsole(decision=OpDecision.RESUME, note="fixed by hand",
+                              approves=False, actions=actions)
+    policy = Policy(apps=(AppAllowance(HOST),))
+    return Replay(page, policy, escalator=Escalator(console)).run(cap, params)
+
+
+def _click_search(page: Any) -> None:
+    """The operator finishing the step by hand, which advances the page."""
+    frame = [f for f in page.frames if f.name == "content"][0]
+    frame.get_by_role("link", name="Search", exact=True).click()
+    page.wait_for_timeout(600)
+
+
+def _refusal(result: Any) -> str:
+    return next((line for line in result.recovered if "resume_refused" in line), "")
+
+
 # --------------------------------------------------------------------------
 # the cases
 # --------------------------------------------------------------------------
@@ -224,6 +250,36 @@ def main() -> int:
             lossy.name = "member_lookup_lossy"
             suite.check(Case("interstitial, discards input", Outcome.SUCCESS, recovered=True),
                         run(page, lossy, {"member_id": "12345"}))
+
+            print("\nescalation, resume and handback:")
+            _reset()
+            stale = load(Path(__file__).resolve().parent.parent
+                         / "capabilities" / "member_lookup_stale.json")
+            # An artifact as the recorder actually produces one: a checkpoint on
+            # the last step and nowhere else. Nothing earlier was ever confirmed,
+            # so on resume there is no known screen to compare against and the
+            # engine refuses rather than guessing where it is.
+            r = run_with_operator(page, stale, {"member_id": "12345"}, _click_search)
+            suite.check(Case("resume with nothing confirmed", Outcome.FAILURE), r)
+            assert "no confirmed checkpoint" in _refusal(r), _refusal(r)
+
+            # Same flow with an earlier step carrying a checkpoint. Now there is
+            # a known screen, and the operator having moved past it is detected.
+            early = replace(stale, steps=[
+                replace(stale.steps[0], checkpoint=Checkpoint("text_present", "Member Search")),
+                *stale.steps[1:]])
+            r = run_with_operator(page, early, {"member_id": "12345"}, _click_search)
+            suite.check(Case("operator moved the page, resume refused", Outcome.FAILURE), r)
+            assert "page moved during handoff" in _refusal(r), _refusal(r)
+
+            # The case resume exists for: the operator fixes the environment and
+            # leaves the page where it was. Verification passes, control comes
+            # back, the step is retried and the flow finishes. This is the only
+            # place the whole handoff runs end to end rather than in pieces.
+            _reset()
+            r = run_with_operator(page, early, {"member_id": "12345"}, None)
+            suite.check(Case("operator fixed it in place, run completes", Outcome.SUCCESS), r)
+            assert _refusal(r) == "", f"resume should have verified, got {_refusal(r)}"
 
             print("\nreading values back:")
             _reset()

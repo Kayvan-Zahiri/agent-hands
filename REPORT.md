@@ -363,6 +363,16 @@ Deliberately not built, in rough order of how much they would matter:
   while a read has nothing to contradict it. Anchoring a read to its label is
   what closes this.
 
+- **Resuming cannot verify on an artifact we actually recorded.** Handing control
+  back is only allowed once we re-confirm the last screen we knew we were on. But
+  recording only ever attaches a check to the *final* step, so when an earlier
+  step fails there is nothing confirmed to compare against, and resume refuses
+  every time. Two gaps that are individually reasonable meet here and close the
+  path. Add a check to a middle step by hand and the whole handoff runs: the
+  person fixes the page, hands it back, the screen is re-confirmed, the step is
+  retried and the flow finishes. `tests/test_replay.py` covers all three cases.
+  Having the recorder attach a check per step is the fix.
+
 - **No identity, no audit trail.** The rules control *what* may run, never *who*
   asked for it. Limiting what each caller may do, and keeping a record of who
   approved what, belong to whatever system calls this one. Named here rather
