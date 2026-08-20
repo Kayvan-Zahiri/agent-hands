@@ -11,6 +11,7 @@ is the part where the application does not, so every assertion here runs against
 from __future__ import annotations
 
 import socket
+from types import SimpleNamespace
 import subprocess
 import sys
 import time
@@ -27,6 +28,9 @@ from agent_hands.perception import (  # noqa: E402
     resolve, resolve_detail,
 )
 from agent_hands.schema import Strategy, Target, TargetSet  # noqa: E402
+from agent_hands.discover import _perform  # noqa: E402
+from agent_hands.policy import AppAllowance, Policy  # noqa: E402
+from agent_hands.recorder import _outputs  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -352,3 +356,68 @@ if __name__ == "__main__":
     demo()
     print()
     unittest.main(argv=[sys.argv[0], "-v"])
+
+
+class RecordedOutputTest(unittest.TestCase):
+    """The recording path, end to end, minus the model.
+
+    A read is typed from what it actually pulled off the screen at record time.
+    That value passes through three hands -- the tool call, the recorded action,
+    the output declaration -- and dropping it anywhere in between costs nothing
+    visible: the artifact still saves, still replays, and still returns the value.
+    It just declares "string", which asserts nothing, so the type check has
+    nothing left to enforce. Testing the pieces separately cannot see that, which
+    is why this drives the real path instead.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._fixture_cm = Fixture("default")
+        cls.fixture = cls._fixture_cm.__enter__()
+        cls._pw = sync_playwright().start()
+        cls.browser = cls._pw.chromium.launch()
+        cls.policy = Policy(apps=(AppAllowance(cls.fixture.url.split("//")[1].rstrip("/")),))
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls._pw.stop()
+        cls._fixture_cm.__exit__()
+
+    def _read(self, on_screen: str, out: str) -> list:
+        """Drive the detail screen and perform one read_value, as discovery does."""
+        page = _open(self.browser, self.fixture.url)
+        try:
+            frame = [f for f in page.frames if f.name == "content"][0]
+            frame.get_by_role("textbox").first.fill("12345")
+            frame.get_by_role("link", name="Search", exact=True).click()
+            page.wait_for_timeout(600)
+            index = next(i for i, n in enumerate(observe(page).addressable())
+                         if n.name == on_screen)
+            call = SimpleNamespace(id="t", name="read_value",
+                                   input={"control": index, "name": out, "why": "the answer"})
+            trajectory: list = []
+            result = _perform(call, page, self.policy, trajectory, None, lambda _: None)
+            self.assertTrue(result.startswith("read"), result)
+            return trajectory
+        finally:
+            page.close()
+
+    def test_a_read_carries_its_value_back(self) -> None:
+        trajectory = self._read("4812.55", "savings_balance")
+        # Without this the recorder types the output from an empty string.
+        self.assertEqual("4812.55", trajectory[0].observed)
+
+    def test_a_balance_is_declared_a_number(self) -> None:
+        outputs = _outputs(self._read("4812.55", "savings_balance"))
+        self.assertEqual(["savings_balance"], [o.name for o in outputs])
+        self.assertEqual("number", outputs[0].type)
+        # The sample is what lets a reviewer see what this returns without
+        # running it, and it comes from the same value.
+        self.assertIn("4812.55", outputs[0].description)
+
+    def test_a_name_stays_a_string(self) -> None:
+        # The conservative half. Guessing a type for something that is not
+        # obviously one would make a working capability refuse its own answer.
+        outputs = _outputs(self._read("Dolores Abernathy", "member_name"))
+        self.assertEqual("string", outputs[0].type)

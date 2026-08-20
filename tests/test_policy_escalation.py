@@ -24,7 +24,9 @@ from agent_hands.policy import (
     ApprovalRequired, FIXTURE_POLICY, Policy, PolicyViolation, classify_risk,
     redact, redact_json,
 )
-from agent_hands.schema import ActionKind, Capability, Checkpoint, Risk, Step
+from agent_hands.schema import (
+    ActionKind, Capability, Checkpoint, Risk, Step, infer_output_type, output_violation,
+)
 
 SEARCH = "http://127.0.0.1:8899/members/search"
 
@@ -551,3 +553,61 @@ class TestDefaultVerify(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOutputTypes(unittest.TestCase):
+    """A read is the one step nothing else can contradict.
+
+    Every other action is judged by whether the screen changed. A read changes
+    nothing, so a target that slipped one cell sideways still returns a real
+    string from a real element and the run completes. The declared type is the
+    only thing between that and a wrong answer nobody notices.
+    """
+
+    def test_inference_only_claims_what_it_can_defend(self) -> None:
+        self.assertEqual("number", infer_output_type("4812.55"))
+        self.assertEqual("number", infer_output_type("1,203.10"))   # thousands separator
+        self.assertEqual("number", infer_output_type("$88.00"))     # currency mark
+        # Deliberately NOT "integer", though the type exists and a person may
+        # declare it. One sample cannot tell an integral field from a value that
+        # happened to be round, and guessing wrong makes a later member holding
+        # cents fail a check on a correct reading.
+        self.assertEqual("number", infer_output_type("12345"))
+        self.assertEqual("number", infer_output_type("5000"))
+        # Everything else stays "string", the type that asserts nothing. A wrong
+        # guess here makes a working capability refuse its own correct answer,
+        # which is worse than the check not existing.
+        self.assertEqual("string", infer_output_type("2019-04-11"))
+        self.assertEqual("string", infer_output_type("Dolores Abernathy"))
+        self.assertEqual("string", infer_output_type("Active"))
+        self.assertEqual("string", infer_output_type(""))
+
+    def test_a_date_is_not_a_balance(self) -> None:
+        # The case this exists for. Inserting a row above the balances shifts
+        # every later cell, and a positional read comes back with the row above.
+        self.assertIsNotNone(output_violation("2019-04-11", "number"))
+        self.assertIsNotNone(output_violation("Active", "number"))
+        self.assertIsNone(output_violation("76230.18", "number"))
+
+    def test_string_asserts_nothing(self) -> None:
+        # Anything recorded before this existed is declared "string", so the
+        # check has to be inert for it rather than failing every old artifact.
+        self.assertIsNone(output_violation("2019-04-11", "string"))
+        self.assertIsNone(output_violation("", "string"))
+
+    def test_integer_rejects_a_fraction(self) -> None:
+        self.assertIsNone(output_violation("12345", "integer"))
+        self.assertIsNotNone(output_violation("4812.55", "integer"))
+
+    def test_a_round_sample_does_not_reject_a_later_fraction(self) -> None:
+        # The trap this inference is shaped to avoid: record a member whose
+        # balance is whole, replay a member whose balance has cents.
+        declared = infer_output_type("5000")
+        self.assertIsNone(output_violation("4812.55", declared))
+
+    def test_what_the_recorder_declares_replay_accepts(self) -> None:
+        # These two run in different processes months apart. If they disagree on
+        # what a number is, a recording declares a type its own replay rejects.
+        for sample in ("4812.55", "1,203.10", "$88.00", "12345", "0", "-5.5"):
+            with self.subTest(sample=sample):
+                self.assertIsNone(output_violation(sample, infer_output_type(sample)))

@@ -56,6 +56,7 @@ class Case:
     expect: Outcome
     code: str | None = None
     recovered: bool | None = None      # None = don't care
+    outputs: dict | None = None        # None = don't care
 
 
 class Suite:
@@ -72,6 +73,8 @@ class Suite:
             problems.append(f"code {result.business_code!r} != {case.code!r}")
         if case.recovered is not None and bool(result.recovered) != case.recovered:
             problems.append(f"recovered={bool(result.recovered)} != {case.recovered}")
+        if case.outputs is not None and result.outputs != case.outputs:
+            problems.append(f"outputs {result.outputs!r} != {case.outputs!r}")
         status = "ok  " if not problems else "FAIL"
         detail = result.business_code or result.message or ""
         print(f"  {status} {case.label:36} {result.outcome.value:17} {detail[:44]}")
@@ -150,6 +153,30 @@ def direct_capability(mode: str | None) -> Capability:
                     checkpoint=Checkpoint("text_present", "Member Detail"))])
 
 
+def read_capability(page: Any, on_screen: str, out: str, declared: str) -> Capability:
+    """Land on a detail screen and read one cell back as an output.
+
+    `declared` is supplied rather than inferred so a test can state a type the
+    screen does not satisfy. That is the whole point: a read is the one action
+    with nothing to contradict it, so the declared type has to be what stops a
+    wrong cell from being reported as an answer.
+    """
+    page.goto(BASE + "/members/search?member_id=12345")
+    obs = observe(page)
+    node = next(n for n in obs.addressable() if n.name == on_screen)
+    return Capability(
+        name=f"member_{out}", description=f"Read {out} from the detail screen.",
+        app_id="meridian-core", entry_url=BASE + "/members/search",
+        params=[Param("member_id", "string", True, "member identifier", "12345")],
+        outputs=[Output(out, declared)], approved=True, business_rules=RULES,
+        steps=[
+            Step(0, ActionKind.NAVIGATE, url=BASE + "/members/search?member_id={member_id}",
+                 risk=Risk.SAFE, checkpoint=Checkpoint("text_present", "Member Detail")),
+            Step(1, ActionKind.READ, target=derive_targets(node, obs.frame_for(node)),
+                 extracts=out, risk=Risk.SAFE),
+        ])
+
+
 def run(page: Any, cap: Capability, params: dict, policy: Policy | None = None) -> Any:
     """One replay with no operator available, so escalations abort rather than wait."""
     console = ScriptedConsole(decision=OpDecision.ABORT, note="unattended", approves=False)
@@ -197,6 +224,28 @@ def main() -> int:
             lossy.name = "member_lookup_lossy"
             suite.check(Case("interstitial, discards input", Outcome.SUCCESS, recovered=True),
                         run(page, lossy, {"member_id": "12345"}))
+
+            print("\nreading values back:")
+            _reset()
+            suite.check(
+                Case("reads a balance", Outcome.SUCCESS,
+                     outputs={"savings_balance": "4812.55"}),
+                run(page, read_capability(page, "4812.55", "savings_balance", "number"),
+                    {"member_id": "12345"}))
+            # A name where a number was declared. This is what a read that
+            # slipped one cell looks like from the inside, and without the check
+            # it completes with a person's name reported as their balance.
+            suite.check(
+                Case("a name declared as a number", Outcome.FAILURE),
+                run(page, read_capability(page, "Dolores Abernathy", "savings_balance", "number"),
+                    {"member_id": "12345"}))
+            # Anything recorded before outputs carried a real type is "string",
+            # so the check has to stay inert for it.
+            suite.check(
+                Case("string declaration asserts nothing", Outcome.SUCCESS,
+                     outputs={"member_name": "Dolores Abernathy"}),
+                run(page, read_capability(page, "Dolores Abernathy", "member_name", "string"),
+                    {"member_id": "12345"}))
 
             print("\nhard failures:")
             for mode, label in [("timeout", "session expired"),

@@ -56,6 +56,7 @@ from .perception import (
 from .policy import Policy, PolicyViolation
 from .schema import (
     ActionKind, BusinessRule, Capability, Checkpoint, Outcome, ReplayResult, Step, Target,
+    output_violation,
 )
 
 # Short wait first, then one longer one. A step that is merely slow is treated
@@ -453,7 +454,7 @@ class Replay:
                                 checkpoint=step.checkpoint.to_json())
                     return None
                 try:
-                    self._act(step, entry, text, urls, outputs, record)
+                    self._act(cap, step, entry, text, urls, outputs, record)
                 except TargetResolutionError as exc:
                     record.attempted = [_as_target(a) for a in exc.attempts]
                     if not last and self._reobserve(step):
@@ -643,7 +644,7 @@ class Replay:
     # -- actions -----------------------------------------------------------
 
     def _act(
-        self, step: Step, entry: str, text: dict[int, str | None],
+        self, cap: Capability, step: Step, entry: str, text: dict[int, str | None],
         urls: dict[int, str | None], outputs: dict[str, Any], record: Any,
     ) -> None:
         if step.action is ActionKind.NAVIGATE:
@@ -689,9 +690,21 @@ class Replay:
             locator.select_option(value, timeout=SLOW_TIMEOUT_MS)
         elif step.action is ActionKind.READ:
             read = (locator.inner_text(timeout=SLOW_TIMEOUT_MS) or "").strip()
-            if step.extracts:
-                outputs[step.extracts] = read
             record.extra["read"] = read
+            if step.extracts:
+                # A read that lands one cell sideways returns a real string from
+                # a real element, so the run has nothing to notice. Every other
+                # step is checked by whether the screen changed; a read changes
+                # nothing. The declared type is the only thing standing between
+                # a shifted row and a date reported as a balance.
+                declared = next((o.type for o in cap.outputs
+                                 if o.name == step.extracts), "string")
+                why = output_violation(read, declared)
+                if why is not None:
+                    record.extra["type_violation"] = why
+                    raise _Abort(f"read for {step.extracts!r} failed its declared type",
+                                 f"{step.extracts} is {declared}", _excerpt(read))
+                outputs[step.extracts] = read
 
     # -- waiting and recovery ----------------------------------------------
 

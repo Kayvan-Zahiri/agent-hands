@@ -226,6 +226,62 @@ class Output:
         return {"name": self.name, "type": self.type, "description": self.description}
 
 
+# What a screen puts around a number and a person reads straight through:
+# currency marks, thousands separators, a stray non-breaking space.
+_NOISE = str.maketrans("", "", "$£€,%  ")
+_TRUE = frozenset({"true", "yes", "y", "on", "1"})
+_FALSE = frozenset({"false", "no", "n", "off", "0"})
+
+
+def infer_output_type(sample: str) -> str:
+    """The narrowest type a value read at record time clearly satisfies.
+
+    Conservative on purpose. Anything not obviously a number stays "string",
+    which is the type that asserts nothing, because a wrong guess here turns a
+    working capability into one that refuses its own correct answer.
+
+    Never infers "integer", though the type exists and a person may declare it.
+    One observation cannot tell a field that is integral from a value that
+    happened to be round: record against a balance of 5000 and every later member
+    holding cents fails a check on a correct reading. "number" accepts both, and
+    the thing worth catching here is a date where a balance belongs, which it
+    still catches.
+    """
+    if not sample or not any(c.isdigit() for c in sample):
+        return "string"
+    cleaned = sample.translate(_NOISE)
+    try:
+        float(cleaned)
+    except ValueError:
+        return "string"
+    return "number"
+
+
+def output_violation(value: str, declared: str) -> str | None:
+    """Why `value` fails its declared type, or None if it holds.
+
+    The point is not tidiness. A read that slips one cell sideways returns a
+    real string from a real element, so nothing downstream can tell it went
+    wrong. This is the check that a date is not a balance. It shares
+    `infer_output_type`'s idea of a number so a recording cannot declare a type
+    that replay then rejects.
+    """
+    if declared == "string":
+        return None                      # asserts nothing, by definition
+    cleaned = value.translate(_NOISE)
+    if declared == "boolean":
+        if cleaned.lower() in _TRUE or cleaned.lower() in _FALSE:
+            return None
+        return f"declared boolean, read {value!r}"
+    try:
+        float(cleaned)
+    except ValueError:
+        return f"declared {declared}, read {value!r}, which is not a number"
+    if declared == "integer" and not cleaned.lstrip("-").isdigit():
+        return f"declared integer, read {value!r}"
+    return None
+
+
 # --------------------------------------------------------------------------
 # the artifact
 # --------------------------------------------------------------------------

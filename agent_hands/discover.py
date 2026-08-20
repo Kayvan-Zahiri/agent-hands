@@ -318,6 +318,10 @@ def _perform(
     if not decision.allowed:
         return f"refused by policy [{decision.gate}]: {decision.reason}"
 
+    # What a read actually pulled off the screen. It never reaches the artifact,
+    # but the recorder types the output from it, so a read that does not carry it
+    # back declares "string" and the type check has nothing to enforce.
+    observed: str | None = None
     try:
         locator = resolve_detail(page, targets).locator
         if kind is ActionKind.CLICK:
@@ -328,8 +332,8 @@ def _perform(
             locator.fill(call.input["text"])
             detail = f"typed into {node.role} captioned {_caption(targets) or node.name!r}"
         else:
-            value = (locator.inner_text() or "").strip()
-            detail = f"read {call.input['name']} = {value!r}"
+            observed = (locator.inner_text() or "").strip()
+            detail = f"read {call.input['name']} = {observed!r}"
     except Exception as exc:
         return f"failed: {type(exc).__name__}: {exc}"
 
@@ -337,7 +341,7 @@ def _perform(
         action=kind, targets=targets,
         text=call.input.get("text"),
         extracts=call.input.get("name"),
-        risk=risk, note=call.input.get("why", ""),
+        risk=risk, note=call.input.get("why", ""), observed=observed,
     ))
     say(f"  {detail}")
     if evidence is not None:

@@ -29,6 +29,7 @@ from .schema import (
     Capability,
     Checkpoint,
     Output,
+    infer_output_type,
     Param,
     Risk,
     Step,
@@ -314,7 +315,8 @@ def _outputs(actions: Sequence[RecordedAction]) -> list[Output]:
         sample = f" Example observed at record time: {action.observed}." if action.observed else ""
         seen.setdefault(
             action.extracts,
-            Output(name=action.extracts, type="string", description=f"Read from the page.{sample}"),
+            Output(name=action.extracts, type=infer_output_type(action.observed or ""),
+                   description=f"Read from the page.{sample}"),
         )
     return list(seen.values())
 
