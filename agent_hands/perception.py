@@ -814,18 +814,27 @@ def _caption_xpath(caption: str) -> str:
     round-trip. `normalize-space` is what makes it survive the <font> tags and
     stray whitespace this generation of markup is full of.
 
-    Both reading directions are unioned rather than tried in order. If both the
-    cell to the left and the row above name the same field, the layout really is
-    ambiguous, so two matches means the target is rejected instead of guessed.
+    Only the cell to the left. This used to union it with the row below, so that
+    a caption sitting above its field would also be found, and treat two matches
+    as a layout too ambiguous to guess at. On a form that stacks caption|field
+    rows -- which is most of them -- the second branch does not find the same
+    field from another direction, it finds the *next row's* field. Every field on
+    such a form matched twice and was rejected, so the strategy this whole module
+    exists for never fired and every control fell through to being counted.
+    Genuine ambiguity is still caught: two cells really captioned X match twice
+    here and are still refused.
+
+    Submit and reset controls are excluded because they share a cell with a field
+    often enough to matter, and nobody calls a button the "Amount" field.
     """
     lit = _xpath_literal(caption)
     cell = "*[self::td or self::th]"
-    control = "*[self::input or self::select or self::textarea]"
-    has_control = "[.//input or .//select or .//textarea]"
+    kinds = "self::select or self::textarea or (self::input and not(@type='submit' " \
+            "or @type='button' or @type='reset' or @type='image' or @type='hidden'))"
+    control = f"*[{kinds}]"
+    has_control = f"[.//*[{kinds}]]"
     anchor = f"//{cell}[normalize-space(.)={lit}]"
-    left = f"{anchor}/following-sibling::{cell}{has_control}[1]//{control}"
-    above = f"{anchor}/ancestor::tr[1]/following-sibling::tr[1]//{control}"
-    return f"{left} | {above}"
+    return f"{anchor}/following-sibling::{cell}{has_control}[1]//{control}"
 
 
 def _xpath_literal(text: str) -> str:
