@@ -33,7 +33,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .escalation import Reason
-from .perception import Observation, PerceptionError, derive_targets, observe, resolve_detail
+from .perception import (
+    PROBE_TIMEOUT_MS, Observation, PerceptionError, derive_targets, observe,
+    resolve_detail,
+)
 from .policy import Policy, PolicyViolation, classify_risk
 from .recorder import RecordedAction, record
 from .schema import ActionKind, Capability, Checkpoint, Risk
@@ -394,13 +397,16 @@ def _render(obs: Observation, limit: int = 45) -> str:
     had_text = False
     for name, frame in obs.frames.items():
         try:
-            body = (frame.inner_text("body") or "").strip()
+            # `html`, not `body`: a frameset's top document has no body, so the
+            # read waits out the whole timeout and then reports nothing. Capped
+            # as well, so no single frame can stall the view the model sees.
+            text = (frame.inner_text("html", timeout=PROBE_TIMEOUT_MS) or "").strip()
         except Exception:
             continue
-        if not body:
+        if not text:
             continue
         had_text = True
-        flat = "\n".join(f"    {ln.strip()}" for ln in body.splitlines() if ln.strip())
+        flat = "\n".join(f"    {ln.strip()}" for ln in text.splitlines() if ln.strip())
         lines.append(f"  [{name}]")
         lines.append(flat[:1200])
     if not had_text:
@@ -451,7 +457,7 @@ def _caption(targets: Any) -> str | None:
 
 
 def _result(call_id: str, content: str, *, is_error: bool = False) -> dict[str, Any]:
-    block = {"type": "tool_result", "tool_use_id": call_id, "content": content}
+    block: dict[str, Any] = {"type": "tool_result", "tool_use_id": call_id, "content": content}
     if is_error:
         block["is_error"] = True
     return block
