@@ -169,6 +169,12 @@ async function runAI() {
   caps = (await j('/capabilities')).capabilities;
 }
 
+async function digest(a) {
+  const b = await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify(a, Object.keys(a).sort())));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
 async function runEngine() {
   // Whatever the AI just wrote, if it wrote one; otherwise the capability that
   // was already on file for this job.
@@ -178,8 +184,11 @@ async function runEngine() {
   $('#rhs').innerHTML = '<p class="dim">Watch the browser window…</p>';
   const t0 = Date.now();
   const args = argsFor(cap);
+  const body = { args };
+  // A write needs the caller to say so, tied to these exact values.
+  if (cap.irreversible) body.confirm = { capability: cap.id, args_digest: await digest(args) };
   const r = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
-    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ args }) });
+    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   $('#rep').disabled = false;
   const ev = await j(`/invocations/${r.run_id}/events`);
   const steps = ev.events.filter(e => e.event === 'step');
