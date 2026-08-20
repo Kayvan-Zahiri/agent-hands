@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .env
 *.env
+
+# Local working notes, not part of the repo
+CLAUDE.md
+COMMANDS.md
+SUMMARY.md
