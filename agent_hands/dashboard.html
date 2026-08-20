@@ -114,6 +114,35 @@ h2{font-size:22px;font-weight:660;letter-spacing:-.02em;margin-bottom:5px}
 .compare.bad li::before{content:"✕";color:var(--bad)}
 .compare.good li::before{content:"✓";color:var(--ok)}
 
+/* the same job, twice */
+.twice{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.phase{border-radius:10px;padding:17px;border:1px solid var(--line);background:var(--raised)}
+.phase.model{background:var(--brand-2);border-color:transparent}
+.phase.engine{background:var(--ok-2);border-color:transparent}
+.phase .cap{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
+  margin-bottom:3px}
+.phase.model .cap{color:var(--brand)} .phase.engine .cap{color:var(--ok)}
+.phase h5{font-size:14.5px;font-weight:640;margin-bottom:10px}
+.goal{font-size:12.5px;color:var(--ink-2);font-style:italic;padding:9px 12px;border-radius:8px;
+  background:var(--surface);margin-bottom:13px;line-height:1.45}
+.turn{display:grid;grid-template-columns:46px 1fr;gap:10px;padding:8px 0;
+  border-top:1px solid rgba(128,140,160,.18)}
+.turn:first-of-type{border-top:0}
+.turn .clock{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;padding-top:1px}
+.turn .did{font-size:13px;font-weight:550}
+.turn .said{font-size:12.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
+.turn .said::before{content:"“"} .turn .said::after{content:"”"}
+.rep{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px;
+  border-top:1px solid rgba(128,140,160,.18)}
+.rep:first-of-type{border-top:0}
+.rep .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.rep .t{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.tally{margin-top:13px;padding-top:11px;border-top:1px solid rgba(128,140,160,.25);
+  font-size:12.5px;line-height:1.5}
+.tally b{font-weight:650}
+.phase.model .tally b{color:var(--brand)} .phase.engine .tally b{color:var(--ok)}
+@media(max-width:900px){.twice{grid-template-columns:1fr}}
+
 /* form */
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
 .field label{display:block;font-size:12.5px;font-weight:570;margin-bottom:4px}
@@ -326,29 +355,80 @@ function explain() {
     </div>
 
     <div class="card">
-      <h3>How it works</h3>
-      <p class="hint">Exploring and repeating are different problems, so they get different machinery.</p>
-      <div class="flow" style="margin-top:16px">
-        <div class="beat"><div class="num">1</div><h5>An AI explores, once</h5>
-          <p>Given a goal, it clicks through the real application until the job is done — while
-             somebody watches. This happens one time.</p></div>
-        <div class="beat"><div class="num">2</div><h5>What it did is written down</h5>
-          <p>Every step becomes a plain file a person can read: which control, in what order, and
-             what has to be true afterwards. Nothing runs until someone approves it.</p></div>
-        <div class="beat no"><div class="num">3</div><h5>It repeats, with no AI</h5>
-          <p>That file is replayed as often as you like. No model is in the loop, so it behaves the
-             same way every time and you can audit exactly what happened.</p></div>
-      </div>
+      <h3>The same job, twice</h3>
+      <p class="hint">Not a diagram — this is a real recorded session on the left, and real
+        replays of the file it produced on the right.</p>
+      <div id="twice"><p class="hint" style="margin-top:14px">Loading…</p></div>
     </div>
 
     <div class="card">
       <h3>What you are looking at</h3>
-      <p class="hint">This console is step 3. Ask for a job on the left, and it drives the real
-        application in a real browser. Every run is recorded on the right — what it did, in order,
-        what it read back, and whether anything looked different from the recording.</p>
+      <p class="hint">The right-hand side of that comparison, for every job. Ask for one on the
+        left and it drives the real application in a real browser, with no model involved. Each run
+        is listed on the right — what it did, in order, what it read back, and whether anything on
+        screen had moved since the recording was made.</p>
       <p class="hint" style="margin-top:10px">Turn on <b>Technical detail</b> in the header to see
         the machinery underneath.</p>
     </div>`;
+  renderTwice();
+}
+
+/* The argument, made with evidence rather than a diagram: what it cost to work
+   this out once, next to what it costs to do it again. */
+const clock = ms => `${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`;
+const secs  = ms => ms < 1000 ? `${ms} ms` : `${(ms/1000).toFixed(ms < 10000 ? 2 : 1)} s`;
+
+function turnSaid(a) {
+  const m = /captioned "'?(.+?)'?"/.exec(a.detail || '') || /'(.+?)'/.exec(a.detail || '');
+  const what = m ? `“${m[1]}”` : 'a control';
+  return a.action === 'type' ? `Typed into the field labelled ${what}`
+       : a.action === 'click' ? `Clicked ${what}`
+       : a.action === 'select' ? `Chose ${what}`
+       : `Read ${what}`;
+}
+
+async function renderTwice() {
+  const host = document.querySelector('#twice');
+  if (!host) return;
+  const [{body: recs}, {body: hist}] = await Promise.all([j('/recordings'), j('/invocations')]);
+  const rec = (recs.recordings || [])[0];
+  if (!rec) { host.innerHTML = '<p class="hint">No recorded session on this machine yet.</p>'; return; }
+
+  const replays = (hist.invocations || []).filter(r => r.capability === rec.produced);
+  const timed = await Promise.all(replays.slice(0, 4).map(async r => {
+    const {body: ev} = await j(`/invocations/${r.run_id}/events`);
+    const last = ev.events[ev.events.length - 1] || {};
+    return {...r, ms: last.elapsed_ms};
+  }));
+
+  host.innerHTML = `<div class="twice">
+    <div class="phase model">
+      <div class="cap">Once</div>
+      <h5>An AI worked out how to do it</h5>
+      <div class="goal">${esc(rec.goal)}</div>
+      ${rec.actions.map(a => `<div class="turn">
+        <div class="clock">${clock(a.at_ms)}</div>
+        <div><div class="did">${esc(turnSaid(a))}</div>
+          <div class="said">${esc(a.why)}</div></div></div>`).join('')}
+      <div class="turn"><div class="clock">${clock(rec.took_ms)}</div>
+        <div><div class="did">Finished</div>
+          <div class="said">${esc(rec.summary)}</div></div></div>
+      <div class="tally"><b>${rec.turns} turns of a model</b> · ${secs(rec.took_ms)} ·
+        needs an API key, and costs money every time you do it.</div>
+    </div>
+
+    <div class="phase engine">
+      <div class="cap">Every time since</div>
+      <h5>An engine repeats it, with nothing deciding</h5>
+      <p class="hint" style="margin-bottom:13px">The two steps above became a file. These are
+        replays of that file, on the same application.</p>
+      ${timed.length ? timed.map(r => `<div class="rep"><span class="dot"></span>
+          <span>Done</span><span class="t">${r.ms != null ? secs(r.ms) : ''}</span></div>`).join('')
+        : '<p class="hint">No replays of it yet — pick it from the list on the left.</p>'}
+      <div class="tally"><b>0 model calls</b> · no API key · the same two steps, in the same
+        order, every single time.</div>
+    </div>
+  </div>`;
 }
 
 /* ---------------- catalog ---------------- */

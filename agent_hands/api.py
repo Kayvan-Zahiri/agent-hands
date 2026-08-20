@@ -378,6 +378,54 @@ def _events(inv: "Invoker", run_id: str) -> dict[str, Any]:
     return {"events": events, "artifacts": artifacts}
 
 
+def _recordings(inv: "Invoker", limit: int = 20) -> list[dict[str, Any]]:
+    """The runs where a model drove the application, rather than a recording.
+
+    These are the other half of the story and the API had no way to show them.
+    A discovery run leaves no `result.json` -- it produces an artifact, not an
+    outcome -- so `_history` skips it entirely. It is recognised here by the
+    events only the discovery loop writes.
+
+    What comes back is the model's own account of itself: which control it chose
+    on each turn, in its own words why, and how long it took. That is worth
+    showing next to a replay of the file it produced, because the contrast is
+    the entire argument for building it this way.
+    """
+    root = Path(inv.evidence_root) if inv.evidence_root else DEFAULT_ROOT
+    found: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*/run.jsonl"), reverse=True):
+        try:
+            events = [json.loads(line) for line in path.read_text().splitlines() if line]
+        except (OSError, json.JSONDecodeError):
+            continue
+        actions = [e for e in events if e.get("event") == "discovery_action"]
+        finished = next((e for e in events if e.get("event") == "discovery_finished"), None)
+        if not actions and finished is None:
+            continue
+        started: dict[str, Any] = next(
+            (e for e in events if e.get("event") == "run_started"), {})
+        name = str(started.get("capability", ""))
+        found.append({
+            "run_id": path.parent.name,
+            # The recorder names a discovery run after the capability it is
+            # trying to produce, prefixed. Strip it, so the page can line the
+            # recording up against replays of what it wrote.
+            "produced": name[len("record-"):] if name.startswith("record-") else name,
+            "goal": (started.get("params") or {}).get("goal", ""),
+            "actions": [{"at_ms": a.get("elapsed_ms"), "action": a.get("action"),
+                         "control": a.get("control"), "detail": a.get("detail"),
+                         "why": a.get("why"), "strategy": a.get("strategy")}
+                        for a in actions],
+            "turns": (finished or {}).get("turns"),
+            "ok": (finished or {}).get("ok"),
+            "summary": (finished or {}).get("stopped_because", ""),
+            "took_ms": (finished or (actions[-1] if actions else {})).get("elapsed_ms"),
+        })
+        if len(found) >= limit:
+            break
+    return found
+
+
 class _Approvers:
     """Ask each in turn. The caller's own confirmation, then a person."""
 
@@ -452,6 +500,8 @@ class _Handler(BaseHTTPRequestHandler):
             if cap is None:
                 return self._send(404, {"error": f"no capability named {name!r}"})
             return self._send(200, _projection(cap))
+        if path == "/recordings":
+            return self._send(200, {"recordings": _recordings(inv)})
         if path == "/invocations":
             return self._send(200, {"invocations": _history(inv)})
         if path.startswith("/invocations/"):
