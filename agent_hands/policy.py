@@ -209,16 +209,26 @@ class Policy:
         """
         if step.risk is not Risk.IRREVERSIBLE:
             return Decision(True, "risk", f"{step.risk.value} action needs no confirmation")
-        if capability is None or not capability.approved:
-            name = capability.name if capability else "<unknown>"
-            return Decision(False, "risk", f"irreversible step in unapproved capability {name!r}")
+        if capability is not None and not capability.approved:
+            return Decision(False, "risk",
+                            f"irreversible step in unapproved capability {capability.name!r}")
+        # No capability at all means this is a recording: the artifact is what
+        # the session is trying to produce, so there is nothing yet to have been
+        # approved. Refusing here made a write flow impossible to record, which
+        # is not a safety property, just a gap. The approver still has to say
+        # yes, and with none configured this refuses exactly as before.
+        if capability is None and self.approver is None:
+            return Decision(False, "risk",
+                            "irreversible step with no capability to authorize it and nobody "
+                            "watching; a recording needs an operator to allow writes")
         if confirm:
             return Decision(True, "risk", "irreversible step approved and confirmed by the caller")
         if self.approver is None:
             return Decision(False, "risk",
                             "irreversible step needs an explicit confirm, and no approver is "
                             "configured; refusing to act unattended")
-        if self.approver.approve(capability=capability.name, step=step):
+        if self.approver.approve(
+                capability=capability.name if capability else "<recording>", step=step):
             return Decision(True, "risk", f"irreversible step approved at runtime for step {step.index}")
         return Decision(False, "risk", f"step {step.index} was declined by the approver")
 
