@@ -101,6 +101,22 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "select_option",
+        "description": (
+            "Choose an option in a dropdown, by the dropdown's number in the current "
+            "observation. Name the option using the text you can see for it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "control": {"type": "integer", "description": "Number of the dropdown itself"},
+                "value": {"type": "string", "description": "The option, as it reads on screen"},
+                "why": {"type": "string"},
+            },
+            "required": ["control", "value", "why"],
+        },
+    },
+    {
         "name": "read_value",
         "description": (
             "Record a value from the screen as an output of this procedure. "
@@ -307,6 +323,7 @@ def _perform(
     kind = {
         "click": ActionKind.CLICK,
         "type_text": ActionKind.TYPE,
+        "select_option": ActionKind.SELECT,
         "read_value": ActionKind.READ,
     }[call.name]
     risk = classify_risk(kind.value, url=page.url, label=node.name or "")
@@ -325,6 +342,7 @@ def _perform(
     # but the recorder types the output from it, so a read that does not carry it
     # back declares "string" and the type check has nothing to enforce.
     observed: str | None = None
+    typed: str | None = call.input.get("text")
     try:
         locator = resolve_detail(page, targets).locator
         if kind is ActionKind.CLICK:
@@ -334,6 +352,19 @@ def _perform(
         elif kind is ActionKind.TYPE:
             locator.fill(call.input["text"])
             detail = f"typed into {node.role} captioned {_caption(targets) or node.name!r}"
+        elif kind is ActionKind.SELECT:
+            # The model names the option by what it can read on screen; the value
+            # that goes into the artifact is looked up here. On a real servicing
+            # console an option's label carries live data -- "MMKT-2 - Money
+            # Market ($5.00)" -- so recording the label would bake one member's
+            # balance into a capability meant to run for everybody.
+            wanted = call.input["value"]
+            typed = locator.evaluate(_JS_OPTION_VALUE, wanted)
+            if typed is None:
+                return f"refused: no option reading {wanted!r} in that dropdown"
+            locator.select_option(typed)
+            page.wait_for_timeout(150)
+            detail = f"selected {typed!r} in {node.role} captioned {_caption(targets) or node.name!r}"
         else:
             observed = (locator.inner_text() or "").strip()
             detail = f"read {call.input['name']} = {observed!r}"
@@ -342,7 +373,7 @@ def _perform(
 
     trajectory.append(RecordedAction(
         action=kind, targets=targets,
-        text=call.input.get("text"),
+        text=typed,
         extracts=call.input.get("name"),
         risk=risk, note=call.input.get("why", ""), observed=observed,
     ))
@@ -435,6 +466,20 @@ def _node_at(obs: Observation, index: Any) -> Any:
     if not isinstance(index, int) or index < 0 or index >= len(numbered):
         return None
     return numbered[index]
+
+
+# Exact value, then exact label, then a prefix, then anything containing it. The
+# ladder exists because the model is repeating text it read off a rendered page,
+# which is close to the option's label and rarely identical to it.
+_JS_OPTION_VALUE = """(sel, wanted) => {
+  const opts = [...(sel.options || [])];
+  const txt = o => (o.textContent || '').trim();
+  const hit = opts.find(o => o.value === wanted)
+           || opts.find(o => txt(o) === wanted)
+           || opts.find(o => txt(o).startsWith(wanted))
+           || opts.find(o => txt(o).includes(wanted));
+  return hit ? hit.value : null;
+}"""
 
 
 def _probe_step(kind: ActionKind, targets: Any, call: Any, risk: Risk) -> Any:

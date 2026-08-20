@@ -74,8 +74,42 @@ def _console(unattended: bool, *, headed: bool = False) -> Any:
 # commands
 # --------------------------------------------------------------------------
 
+class _WatchingOperator:
+    """The person at the keyboard during a recording.
+
+    Replay gates an irreversible step on the artifact having been reviewed and
+    approved. At record time there is no artifact yet -- it is what the session
+    is trying to produce -- so that gate refuses every write, and a transfer can
+    never be recorded at all. The chicken-and-egg is real, and the way out is
+    that the two moments are gated by different things: replay asks whether a
+    reviewer signed the file, recording asks whether a person is watching.
+
+    `--allow-writes` is that person saying yes, once, for this session, on the
+    command line. Every approval it grants is printed, because a recording that
+    quietly posted a transfer would be the worst version of this.
+    """
+
+    def __init__(self, say: Any) -> None:
+        self.say = say
+        self.granted: list[int] = []
+
+    def approve(self, *, capability: str, step: Any) -> bool:
+        self.granted.append(step.index)
+        self.say(f"  ~ allowing an irreversible {step.action.value} "
+                 f"because --allow-writes was given")
+        return True
+
+
 def cmd_record(args: argparse.Namespace) -> int:
     from .discover import DiscoveryError, discover
+
+    say = lambda m: print(m, file=sys.stderr)          # noqa: E731
+    policy = _policy(args.url)
+    operator = None
+    if args.allow_writes:
+        operator = _WatchingOperator(say)
+        policy.approver = operator
+        say("recording with writes allowed: this session may post real transactions")
 
     play, browser, page = _browser(args.headed)
     evidence = Evidence.start(f"record-{args.name or 'capability'}",
@@ -83,9 +117,10 @@ def cmd_record(args: argparse.Namespace) -> int:
     try:
         result = discover(
             goal=args.goal, entry_url=args.url, page=page,
-            policy=_policy(args.url), app_id=args.app_id,
+            policy=policy, app_id=args.app_id,
             app_variant=args.variant, evidence=evidence,
-            on_step=lambda m: print(m, file=sys.stderr),
+            **({"max_turns": args.max_turns} if args.max_turns else {}),
+            on_step=say,
         )
     except DiscoveryError as exc:
         print(f"discovery failed: {exc}", file=sys.stderr)
@@ -94,7 +129,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         browser.close(); play.stop()
 
     evidence.event("discovery_finished", ok=result.ok, turns=result.turns,
-                   stopped_because=result.stopped_because)
+                   stopped_because=result.stopped_because,
+                   writes_allowed=bool(operator and operator.granted))
     if not result.ok:
         print(f"\nno artifact produced: {result.stopped_because}", file=sys.stderr)
         print(f"evidence: {evidence.dir}", file=sys.stderr)
@@ -213,6 +249,12 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--name", default=None, help="override the derived capability name")
     rec.add_argument("--out", default=None)
     rec.add_argument("--headed", action="store_true", help="show the browser")
+    rec.add_argument("--allow-writes", action="store_true",
+                     help="let this recording perform irreversible actions. Without it a "
+                          "write flow cannot be recorded, because the gate replay uses "
+                          "asks for an approved artifact and there is not one yet")
+    rec.add_argument("--max-turns", type=int, default=None,
+                     help="how many turns the model gets; a long write flow needs more")
     rec.set_defaults(func=cmd_record)
 
     show = sub.add_parser("show", help="print an artifact for review")
