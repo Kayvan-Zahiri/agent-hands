@@ -326,6 +326,12 @@ def bind_params(cap: Capability, params: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             if spec.required:
                 raise ParamError(f"missing required parameter {name!r}")
+            # Bound to nothing rather than left unbound. A step is allowed to
+            # reference an optional parameter -- a memo field on a transfer is
+            # the obvious case -- and `substitute` refuses a placeholder it
+            # cannot fill, so leaving it out made every optional parameter a
+            # required one the moment a step mentioned it.
+            bound[name] = ""
             continue
         # In Python, True is also an int. Without this check, True would pass
         # as an account number.

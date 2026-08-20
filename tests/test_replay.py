@@ -440,6 +440,18 @@ def main() -> int:
                         typed == ["{member_id}"], repr(typed))
             shutil.rmtree(ev_root, ignore_errors=True)
 
+            # An optional parameter a step mentions was a required one in
+            # disguise: bind_params left it unbound and substitute refused the
+            # placeholder, so the run stopped before the browser opened.
+            _reset()
+            optional = copy.deepcopy(cap)
+            optional.name = "member_lookup_optional"
+            optional.params = [*optional.params,
+                               Param("note", "string", False, "free text nobody has to give")]
+            optional.steps[1].text = "{member_id}{note}"
+            suite.check(Case("an optional parameter left out", Outcome.SUCCESS),
+                        run(page, optional, {"member_id": "12345"}))
+
             print("\nhard failures:")
             for mode, label in [("timeout", "session expired"),
                                 ("denied", "permission denied"),
