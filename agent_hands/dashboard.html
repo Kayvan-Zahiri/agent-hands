@@ -3,18 +3,18 @@
 <title>Capability Console</title>
 <style>
   body { background:#c8c8c8; margin:0; }
-  body, td, th, input, button { font-family:Verdana,Arial,sans-serif; font-size:12px; color:#000; }
+  body, td, th, input, button { font-family:Verdana,Arial,sans-serif; font-size:13px; color:#000; }
   a { color:#0000aa; }
-  #page { width:880px; margin:14px auto 40px; background:#fff; border:1px solid #003366; }
-  #bar { background:#003366; padding:7px 10px; color:#fff; }
-  #bar b { font-size:14px; } #bar span { color:#a9c2e0; font-size:11px; }
+  #page { width:1080px; margin:18px auto 40px; background:#fff; border:1px solid #003366; }
+  #bar { background:#003366; padding:10px 14px; color:#fff; }
+  #bar b { font-size:17px; } #bar span { color:#a9c2e0; font-size:11px; }
   #bar .r { float:right; color:#a9c2e0; font-size:11px; }
   #tabs { background:#eef2f7; border-bottom:1px solid #003366; padding:0 10px; }
-  #tabs button { font:inherit; background:none; border:0; border-bottom:3px solid transparent;
-    padding:7px 13px; cursor:pointer; color:#0000aa; }
+  #tabs button { font:inherit; font-size:14px; background:none; border:0;
+    border-bottom:3px solid transparent; padding:10px 16px; cursor:pointer; color:#0000aa; }
   #tabs button[aria-current=true] { border-bottom-color:#003366; color:#000; font-weight:bold; }
   #body { padding:16px 18px 24px; }
-  h1 { font-size:13px; margin:0 0 4px; }
+  h1 { font-size:19px; margin:0 0 12px; }
   h2 { font-size:12px; margin:20px 0 7px; color:#003366; border-bottom:1px solid #c9d4e2;
        padding-bottom:3px; }
   p { margin:0 0 9px; line-height:1.55; }
@@ -29,15 +29,16 @@
   .err { color:#a00000; font-weight:bold; } .ok { color:#006600; font-weight:bold; }
   .warn { color:#8a5a00; font-weight:bold; }
   .fld { border:1px solid #7f9db9; background:#fff; padding:2px 3px; font-size:12px; width:100%; }
-  .btn { font:inherit; padding:3px 13px; }
+  .btn { font:inherit; font-size:14px; padding:5px 16px; }
   .req { color:#a00000; }
   .two { display:flex; gap:14px; }
   .two > div { flex:1; border:1px solid #003366; display:flex; flex-direction:column; }
-  .two h3 { margin:0; background:#003366; color:#fff; font-size:11px; padding:5px 8px; }
-  .two .in { padding:9px 10px; flex:1; }
-  .turn { border-top:1px solid #e2e6ec; padding:5px 0; }
+  .two h3 { margin:0; background:#003366; color:#fff; font-size:13px; padding:8px 11px;
+    letter-spacing:.04em; }
+  .two .in { padding:12px 13px; flex:1; min-height:330px; font-size:14px; }
+  .turn { border-top:1px solid #e2e6ec; padding:7px 0; }
   .turn:first-child { border-top:0; }
-  .foot { border-top:1px solid #003366; background:#eef2f7; padding:6px 10px; font-size:11px; }
+  .foot { border-top:1px solid #003366; background:#eef2f7; padding:9px 12px; font-size:14px; }
   .tag { font-size:10px; background:#eef2f7; border:1px solid #c9d4e2; padding:0 5px; color:#333; }
   .tag.w { background:#fdf3e2; border-color:#e0c68a; color:#8a5a00; }
   pre { background:#f7f8fa; border:1px solid #c9d4e2; padding:9px; overflow:auto;
@@ -51,7 +52,7 @@
   </div>
   <div id="tabs">
     <button data-tab="about" aria-current="true">Overview</button>
-    <button data-tab="jobs">Run</button>
+    <button data-tab="jobs">Jobs</button>
     <button data-tab="artifact">Artifact</button>
     <button data-tab="runs">Runs</button>
   </div>
@@ -94,82 +95,129 @@ function go(tab) {
 }
 
 /* ------------------------------ how it works ------------------------------ */
-async function about() {
+let picked = null, produced = null;
+
+// The goal the model gets is the recorded description with its example values
+// put back, which is as close as we can get to the sentence somebody typed the
+// first time this was worked out.
+function goalFor(cap) {
+  let g = cap.description || '';
+  cap.params.forEach(p => { if (p.example) g = g.replaceAll('{' + p.name + '}', p.example); });
+  return g.replace(/\{(\w+)\}/g, '$1');
+}
+function argsFor(cap) {
+  const a = {};
+  cap.params.forEach(p => { a[p.name] = p.example || (p.name === 'password' ? 'password' : ''); });
+  return a;
+}
+
+function about() {
+  if (!picked) picked = caps.find(c => c.id === 'meridian_balance_recorded') || caps[0];
   $('#body').innerHTML = `
-    <h1>The same job, twice</h1>
-    <div id="twice"><p class="dim">Loading…</p></div>`;
-  const [{recordings}, {invocations}] = await Promise.all([j('/recordings'), j('/invocations')]);
-  const rec = recordings[0];
-  if (!rec) return $('#twice').innerHTML = '<p class="dim">No recording on this machine.</p>';
-  const reps = invocations.filter(r => r.capability === rec.produced).slice(0, 5);
-  const ms = await Promise.all(reps.map(async r => {
-    const ev = await j(`/invocations/${r.run_id}/events`);
-    return (ev.events[ev.events.length - 1] || {}).elapsed_ms;
-  }));
-  const clock = m => `${Math.floor(m/60000)}:${String(Math.floor(m/1000)%60).padStart(2,'0')}`;
-  $('#twice').innerHTML = `<div class="two">
-    <div><h3>ONCE &mdash; WITH AN AI</h3><div class="in">
-      ${rec.actions.map(a => `<div class="turn"><span class="dim">${clock(a.at_ms)}</span>
-        &nbsp; ${esc(short(a.detail))}</div>`).join('')}
-    </div><div class="foot"><b>${rec.turns} model turns</b> &middot;
-      ${(rec.took_ms/1000).toFixed(0)}s</div></div>
-    <div><h3>EVERY TIME SINCE &mdash; NO AI</h3><div class="in">
-      ${ms.map(m => `<div class="turn"><span class="ok">done</span>
-        <span class="dim" style="float:right">${m} ms</span></div>`).join('')
-        || '<p class="dim">&mdash;</p>'}
-    </div><div class="foot"><b>0 model turns</b> &middot;
-      ${ms.length ? (ms.reduce((a,b)=>a+b,0)/ms.length/1000).toFixed(2) : '0'}s</div></div>
-  </div>`;
+    <h1>${esc(title(picked))} &mdash; the same job, twice</h1>
+    <div class="two">
+      <div><h3>ONCE &mdash; WITH AN AI</h3>
+        <div class="in" id="lhs"><p class="dim">A model works it out by clicking
+          through the real screen.</p></div>
+        <div class="foot"><button class="btn" id="rec">Run with the AI</button>
+          <span id="recfoot" class="dim"></span></div></div>
+      <div><h3>EVERY TIME SINCE &mdash; NO AI</h3>
+        <div class="in" id="rhs"><p class="dim">The engine repeats what it wrote.</p></div>
+        <div class="foot"><button class="btn" id="rep">Run the recording</button>
+          <span id="repfoot" class="dim"></span></div></div>
+    </div>`;
+  $('#rec').onclick = runAI;
+  $('#rep').onclick = runEngine;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function runAI() {
+  $('#rec').disabled = true;
+  $('#lhs').innerHTML = '<p class="dim">The model is looking at the screen…</p>';
+  $('#recfoot').innerHTML = ' <b class="warn">thinking</b>';
+  const t0 = Date.now();
+  // Do not block: come back with a run id and watch the log fill in, because a
+  // panel that sits still for thirty seconds does not look like anything.
+  produced = 'live_' + picked.id.replace(/_recorded$/, '');
+  const started = await j('/recordings', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ goal: goalFor(picked), name: produced, wait_seconds: 0 }) });
+  let r = started, first = true;
+  const seen = new Set();
+  while (r.status !== 'completed') {
+    await sleep(600);
+    const ev = await j(`/invocations/${started.run_id}/events`);
+    for (const e of ev.events.filter(x => x.event === 'discovery_action')) {
+      const key = e.elapsed_ms + ':' + e.action;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (first) { $('#lhs').innerHTML = ''; first = false; }
+      $('#lhs').insertAdjacentHTML('beforeend',
+        `<div class="turn">${esc(short(e.detail))}</div>`);
+      $('#recfoot').innerHTML = ` <b class="warn">thinking</b> &middot; ` +
+        `${seen.size} action${seen.size === 1 ? '' : 's'} &middot; ` +
+        `${((Date.now()-t0)/1000).toFixed(0)}s`;
+    }
+    r = await j(`/invocations/${started.run_id}`);
+  }
+  $('#rec').disabled = false;
+  const secs = ((Date.now() - t0) / 1000).toFixed(0);
+  if (r.error) { $('#lhs').innerHTML = `<p class="err">${esc(r.error)}</p>`;
+                 $('#recfoot').textContent = ''; return; }
+  $('#recfoot').innerHTML = ` <b>${r.result.turns} model turns</b> &middot; ${secs}s`;
+  caps = (await j('/capabilities')).capabilities;
+}
+
+async function runEngine() {
+  // Whatever the AI just wrote, if it wrote one; otherwise the capability that
+  // was already on file for this job.
+  const cap = caps.find(c => c.id === produced) || picked;
+  if (!cap) { $('#rhs').innerHTML = '<p class="dim">Nothing to replay yet.</p>'; return; }
+  $('#rep').disabled = true;
+  $('#rhs').innerHTML = '<p class="dim">Watch the browser window…</p>';
+  const t0 = Date.now();
+  const args = argsFor(cap);
+  const r = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
+    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ args }) });
+  $('#rep').disabled = false;
+  const ev = await j(`/invocations/${r.run_id}/events`);
+  const steps = ev.events.filter(e => e.event === 'step');
+  const ms = (ev.events[ev.events.length - 1] || {}).elapsed_ms;
+  const res = r.result || {};
+  $('#rhs').innerHTML = steps.length
+    ? steps.map(st => `<div class="turn">${esc(said(st))}</div>`).join('')
+    : `<p class="err">${esc(res.message || r.error || 'refused')}</p>`;
+  $('#repfoot').innerHTML = ` <b>0 model turns</b> &middot; ${(ms/1000).toFixed(2)}s`;
+}
+
+function stepLine(st) {
+  const t = st.target && st.target.candidates[0];
+  const named = t && /^\w+ "(.*)"$/.exec(t.value);
+  return st.action === 'navigate' ? 'opened the sign-on screen'
+    : st.action === 'type' ? `typed ${(st.text||'').replace(/[{}]/g,'')}`
+    : st.action === 'select' ? `chose ${(st.text||'').replace(/[{}]/g,'')}`
+    : st.action === 'click' ? `clicked ${named ? named[1] : 'a control'}`
+    : st.action === 'read' ? `read ${st.extracts || 'a value'}` : st.action;
 }
 
 /* -------------------------------- run a job ------------------------------- */
 function jobs() {
-  const live = caps.filter(c => c.id.startsWith('meridian_'));
+  const seen = {};
+  for (const c of caps.filter(x => x.id.startsWith('meridian_')))
+    if (!seen[title(c)] || c.id.endsWith('_recorded')) seen[title(c)] = c;
+  const live = Object.values(seen);
   $('#body').innerHTML = `
-    <h1>Run</h1>
+    <h1>Pick a job</h1>
     <table class="grid"><tr><th>Job</th><th>Capability</th><th>Writes</th></tr>
     ${live.map(c => `<tr class="pick" data-id="${esc(c.id)}">
       <td class="lbl">${esc(title(c))}</td><td class="dim">${esc(c.id)}</td>
       <td>${c.irreversible ? '<span class="err">yes</span>' : 'no'}</td></tr>`).join('')}</table>`;
-  $('#body').querySelectorAll('tr.pick').forEach(tr =>
-    tr.onclick = () => form(caps.find(c => c.id === tr.dataset.id)));
-}
-
-function form(cap) {
-  chosen = cap;
-  $('#body').innerHTML = `
-    <h1>${esc(title(cap))}</h1>
-    <table class="grid" style="margin-top:10px"><tr><th colspan="2">Details</th></tr>
-    ${cap.params.map(p => `<tr>
-      <td class="lbl" width="150" align="right">${p.required ? '<span class="req">*</span> ' : ''}${esc(FIELD[p.name]||p.name)}</td>
-      <td><input class="fld" data-p="${esc(p.name)}" value="${esc(p.example||'')}"
-           type="${p.name === 'password' ? 'password' : 'text'}"></td></tr>`).join('')}</table>
-    ${cap.irreversible ? `<div class="box" style="margin-top:11px">
-      <span class="err">This writes and cannot be undone.</span> Ticking the box sends a
-      confirmation tied to these exact values.<br><br>
-      <label><input type="checkbox" id="confirm"> Confirm this transaction</label></div>` : ''}
-    <p style="margin-top:13px"><button class="btn" id="go">Run</button>
-      <button class="btn" onclick="go('jobs')">Cancel</button>
-      <span id="note" class="dim"></span></p>`;
-  $('#go').onclick = invoke;
-}
-
-async function digest(a) {
-  const b = await crypto.subtle.digest('SHA-256',
-    new TextEncoder().encode(JSON.stringify(a, Object.keys(a).sort())));
-  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,'0')).join('');
-}
-
-async function invoke() {
-  const args = {};
-  document.querySelectorAll('[data-p]').forEach(i => { if (i.value) args[i.dataset.p] = i.value; });
-  const body = { args };
-  if ($('#confirm')?.checked) body.confirm = { capability: chosen.id, args_digest: await digest(args) };
-  $('#go').disabled = true; $('#note').textContent = ' — driving the application…';
-  const res = await j(`/capabilities/${encodeURIComponent(chosen.id)}/invocations`,
-    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (res.run_id) show(res.run_id);
-  else { $('#go').disabled = false; $('#note').textContent = ''; }
+  $('#body').querySelectorAll('tr.pick').forEach(tr => tr.onclick = () => {
+    picked = caps.find(c => c.id === tr.dataset.id);
+    produced = null;
+    go('about');
+  });
 }
 
 /* ------------------------------ what it wrote ----------------------------- */
@@ -234,7 +282,7 @@ async function show(id) {
   const res = r.result || {}, st = res.outcome || (r.error ? 'failure' : r.status);
   const v = VERDICT[st] || ['dim', st];
   const c = caps.find(x => x.id === r.capability);
-  const outs = res.typed_outputs || res.outputs || {};
+  const outs = res.outputs || {};
   const steps = ev.events.filter(e => e.event === 'step');
   $('#body').innerHTML = `
     <h1>${esc(c ? title(c) : r.capability || '')}</h1>
@@ -274,7 +322,7 @@ function said(s) {
   return s.action === 'navigate' ? `Opened ${(s.url||'').replace(/^https?:\/\/[^/]+/,'') || 'the application'}`
     : s.action === 'type' ? `Entered ${p}` : s.action === 'select' ? `Chose ${p}`
     : s.action === 'click' ? `Clicked ${named}`
-    : s.action === 'read' ? `Read ${s.extra && s.extra.read ? '“'+s.extra.read+'”' : 'a value'}`
+    : s.action === 'read' ? `Read ${s.read ? '“' + s.read + '”' : 'a value'}`
     : 'Waited';
 }
 

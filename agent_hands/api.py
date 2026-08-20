@@ -53,6 +53,17 @@ DEFAULT_WAIT_SECONDS = 60
 
 _TEMPLATED = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 
+# Where a recording starts when the caller does not say.
+DEFAULT_RECORD_URL = "https://web-sample.interface-hiring.com/signon"
+
+_W, _H = 1500, 940
+_WINDOW_ARGS = [f"--window-size={_W},{_H + 80}", "--window-position=40,40"]
+
+
+def _viewport() -> Any:
+    """Playwright wants a TypedDict here; a plain literal is the same shape."""
+    return {"width": _W, "height": _H}
+
 
 class CatalogError(Exception):
     """An artifact that may not be served, with the reason a person needs."""
@@ -255,6 +266,68 @@ class Invoker:
         self._slots = threading.Semaphore(MAX_CONCURRENT_RUNS)
         self._lock = threading.Lock()
 
+    def record(self, goal: str, entry_url: str, name: str) -> Run:
+        """Let a model work a job out, live, in a window somebody is watching.
+
+        The other half of the design, and until now the API could only show its
+        leftovers. Same shape as an invocation -- a thread, a run id, an evidence
+        directory -- so the page polls it the same way.
+        """
+        evidence = Evidence.start(f"record-{name}", params={"goal": goal, "url": entry_url})
+        run = Run(run_id=evidence.dir.name, capability=f"record-{name}", args={"goal": goal})
+        with self._lock:
+            self.runs[run.run_id] = run
+        threading.Thread(target=self._discover, daemon=True,
+                         args=(run, goal, entry_url, name, evidence)).start()
+        return run
+
+    def _discover(self, run: Run, goal: str, entry_url: str, name: str,
+                  evidence: Evidence) -> None:
+        from playwright.sync_api import sync_playwright
+
+        from .discover import discover
+        from .recorder import save
+
+        self._slots.acquire()
+        play = browser = None
+        try:
+            play = sync_playwright().start()
+            # Always headed, and big. The point of watching a recording is
+            # watching it, and the default window is too small to read from
+            # across a room.
+            browser = play.chromium.launch(headless=False, args=_WINDOW_ARGS)
+            page = browser.new_page(viewport=_viewport())
+            policy = self._policy_for(entry_url)
+            policy.approver = _AlwaysWatching()
+            result = discover(goal=goal, entry_url=entry_url, page=page, policy=policy,
+                              app_id="meridian-core", evidence=evidence, max_turns=30)
+            evidence.event("discovery_finished", ok=result.ok, turns=result.turns,
+                           stopped_because=result.stopped_because)
+            if not result.ok or result.capability is None:
+                run.error = result.stopped_because
+            else:
+                cap = result.capability
+                cap.name = name
+                # Signed off here so the demo is two clicks. The gate itself is
+                # untouched -- replay still refuses an unapproved artifact, and
+                # `agent-hands record` still writes a draft.
+                cap.approved = True
+                path = Path(self.catalog.root) / "meridian" / f"{name}.json"
+                save(cap, path)
+                self.catalog = Catalog.open(self.catalog.root)
+                run.result = {"turns": result.turns, "capability": name,
+                              "artifact": cap.to_json()}
+        except Exception as exc:                      # noqa: BLE001
+            run.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            if browser is not None:
+                browser.close()
+            if play is not None:
+                play.stop()
+            self._slots.release()
+            run.status = "completed"
+            run.done.set()
+
     def start(self, name: str, args: dict[str, Any],
               confirm: dict[str, Any] | None = None) -> Run:
         cap = self.catalog.capabilities[name]
@@ -275,8 +348,9 @@ class Invoker:
         play = browser = None
         try:
             play = sync_playwright().start()
-            browser = play.chromium.launch(headless=not self.headed)
-            page = browser.new_page()
+            browser = play.chromium.launch(headless=not self.headed,
+                                           args=_WINDOW_ARGS if self.headed else [])
+            page = browser.new_page(viewport=_viewport() if self.headed else None)
 
             policy = self._policy(cap)
             # With this the surface gate checks where the browser actually is on
@@ -309,7 +383,10 @@ class Invoker:
 
     def _policy(self, cap: Capability) -> Policy:
         """The allowlist, derived here rather than accepted from the caller."""
-        host = urlparse(cap.entry_url).netloc
+        return self._policy_for(cap.entry_url)
+
+    def _policy_for(self, url: str) -> Policy:
+        host = urlparse(url).netloc
         return Policy(apps=(AppAllowance(host=host),), name=host)
 
     def _console(self) -> Any:
@@ -426,6 +503,13 @@ def _recordings(inv: "Invoker", limit: int = 20) -> list[dict[str, Any]]:
     return found
 
 
+class _AlwaysWatching:
+    """A person is at the keyboard for a recording, and the window is open."""
+
+    def approve(self, *, capability: str, step: Any) -> bool:
+        return True
+
+
 class _Approvers:
     """Ask each in turn. The caller's own confirmation, then a person."""
 
@@ -532,8 +616,35 @@ class _Handler(BaseHTTPRequestHandler):
         inv: Invoker = self.server.invoker                   # type: ignore[attr-defined]
         path = urlparse(self.path).path.rstrip("/")
         parts = path.split("/")
-        if len(parts) != 4 or parts[1] != "capabilities" or parts[3] != "invocations":
+        if path != "/recordings" and (
+                len(parts) != 4 or parts[1] != "capabilities"
+                or parts[3] not in ("invocations", "approval")):
             return self._send(404, {"error": f"no route {path!r}"})
+
+        if len(parts) == 4 and parts[1] == "capabilities" and parts[3] == "approval":
+            cap = inv.catalog.capabilities.get(parts[2])
+            if cap is None:
+                return self._send(404, {"error": f"no capability named {parts[2]!r}"})
+            # The reviewer's signature. A recording is a draft until somebody
+            # who read it says otherwise, which is why this is its own act and
+            # not something `record` does on the way out.
+            from .recorder import save
+            cap.approved = True
+            save(cap, Path(inv.catalog.root) / "meridian" / f"{cap.name}.json")
+            inv.catalog = Catalog.open(inv.catalog.root)
+            return self._send(200, {"approved": True, "capability": cap.name})
+
+        if path == "/recordings":
+            try:
+                body = self._body()
+            except ValueError as exc:
+                return self._send(400, {"error": str(exc)})
+            goal, name = body.get("goal"), body.get("name")
+            if not goal or not name:
+                return self._send(400, {"error": "goal and name are required"})
+            run = inv.record(goal, body.get("entry_url") or DEFAULT_RECORD_URL, name)
+            run.done.wait(timeout=float(body.get("wait_seconds", 180)))
+            return self._send(200 if run.status == "completed" else 202, run.to_json())
 
         name = parts[2]
         if name not in inv.catalog.capabilities:
