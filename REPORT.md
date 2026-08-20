@@ -303,6 +303,20 @@ Deliberately not built, in rough order of how much they would matter:
   "Savings Balance". `LABELLED_FIELD` is exactly that idea and applies only to
   form fields. Extending it to value cells is the next thing worth doing here.
 
+  This is not only a durability point. Position is silently wrong, where the
+  other strategies are loudly wrong. Inserting one "Member Since" row above the
+  balances shifts every later cell down, and the recorded read comes back:
+
+      truth       savings 76230.18    checking 9902.77
+      returned    savings 2019-04-11  checking 76230.18   exit 0, "flow completed"
+
+  A date, reported as a balance, with a success code. A missing landmark stops
+  the run and captures the screen; a landmark that moved does not, because
+  finding *a* seventh cell is indistinguishable from finding *the* seventh cell.
+  Reads carry that risk and clicks largely do not: a click that lands on the
+  wrong control usually fails its checkpoint, while a read has nothing to
+  contradict it. Anchoring reads to their label is what closes this.
+
 - **Identity and audit.** The policy layer gates *what* runs, not *who* asked.
   Per-caller scoping and an attributable approvals trail belong to whatever calls
   this. Named rather than half-built.
