@@ -1,0 +1,14 @@
+{
+  "outcome": "business_outcome",
+  "capability": "meridian_place_hold",
+  "outputs": {},
+  "business_code": "supervisor_required",
+  "message": "this function needs a supervisor to sign on",
+  "failed_step": null,
+  "expected": null,
+  "observed": null,
+  "recovered": [],
+  "degraded": [],
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213458Z_meridian-place-hold_8acbbe",
+  "escalated": false
+}

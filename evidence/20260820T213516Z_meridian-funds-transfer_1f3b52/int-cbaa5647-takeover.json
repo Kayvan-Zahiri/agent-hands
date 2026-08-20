@@ -1,0 +1,10 @@
+{
+  "request_id": "int-cbaa5647",
+  "decision": "abort",
+  "url_before": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "url_after": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "page_moved": false,
+  "note": "no operator on duty",
+  "seconds": 0.0,
+  "screenshot_after": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213516Z_meridian-funds-transfer_1f3b52/int-cbaa5647-after.png"
+}

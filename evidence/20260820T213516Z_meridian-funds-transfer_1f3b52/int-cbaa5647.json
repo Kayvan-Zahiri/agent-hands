@@ -1,0 +1,26 @@
+{
+  "id": "int-cbaa5647",
+  "reason": "approval_required",
+  "capability": "meridian_funds_transfer",
+  "step_index": 11,
+  "step_action": "click",
+  "question": "irreversible step needs an explicit confirm, and no approver is configured; refusing to act unattended",
+  "expected": "text_present='TRANSACTION COMPLETE'",
+  "observed": null,
+  "url": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "screenshot": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213516Z_meridian-funds-transfer_1f3b52/int-cbaa5647-before.png",
+  "checkpoint": {
+    "kind": "text_present",
+    "value": "TRANSACTION COMPLETE"
+  },
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213516Z_meridian-funds-transfer_1f3b52",
+  "options": [
+    "fix the page in the open browser, then resume",
+    "abort the run"
+  ],
+  "context": {
+    "app": "meridian-core",
+    "variant": "default"
+  },
+  "raised_at": 1787261717.418005
+}

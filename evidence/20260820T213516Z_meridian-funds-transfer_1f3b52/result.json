@@ -1,0 +1,14 @@
+{
+  "outcome": "failure",
+  "capability": "meridian_funds_transfer",
+  "outputs": {},
+  "business_code": null,
+  "message": "declined",
+  "failed_step": 11,
+  "expected": "approval for step 11",
+  "observed": "irreversible step needs an explicit confirm, and no approver is configured; refusing to act unattended",
+  "recovered": [],
+  "degraded": [],
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213516Z_meridian-funds-transfer_1f3b52",
+  "escalated": true
+}

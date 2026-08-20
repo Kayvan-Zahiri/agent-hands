@@ -1,0 +1,16 @@
+{
+  "outcome": "success",
+  "capability": "meridian_funds_transfer",
+  "outputs": {
+    "confirmation": "CN480137"
+  },
+  "business_code": null,
+  "message": "flow completed",
+  "failed_step": null,
+  "expected": null,
+  "observed": null,
+  "recovered": [],
+  "degraded": [],
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260820T213457Z_meridian-funds-transfer_9cfe58",
+  "escalated": false
+}

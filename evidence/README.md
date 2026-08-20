@@ -4,11 +4,43 @@ One directory per run. `run.jsonl` is append-only and flushed per line, so a
 process killed mid-step still leaves the steps before it. `result.json` is
 written last and is the only file that means "this run finished".
 
-## The recording
+## Against MERIDIAN CORE, the hosted target
+
+Five bundles, chosen because between them they cover every way a run can end.
 
 | run | what it shows |
 |---|---|
-| `...002140Z_record-member-lookup-live_d061f6` | a real Claude Opus 5 run driving the fixture, 3 turns |
+| `...212018Z_record-meridian-transfer-recorded_7c690e` | a model working out how to move money, 11 turns, 46s |
+| `...213457Z_meridian-funds-transfer_9cfe58` | the same job replayed with no model: `success`, confirmation `CN480137` |
+| `...213516Z_meridian-funds-transfer_1f3b52` | the same job again with nobody authorized to approve it: stops at step 11, **before the write**, and leaves an intervention packet with screenshots |
+| `...213458Z_meridian-place-hold_8acbbe` | a teller attempting a supervisor-only action: `business_outcome / supervisor_required`, not a crash |
+| `...211103Z_meridian-balance-recorded_2955f5` | a read that still worked and should not be trusted — see below |
+
+### The one worth opening
+
+`...211103Z_meridian-balance-recorded_2955f5` returns `success` and a plausible
+number, and it is wrong. The capability is named `savings_balance`. It was
+recorded against member 103001's **Money Market** account and replayed for member
+100234, where it returned `$198.04` — that member's **Share Draft (Checking)**
+balance.
+
+Nothing in the run contradicts it. The checkpoint held, the declared type is
+`number` and `$198.04` is a number. The only signal is one line in `result.json`:
+
+```json
+"degraded": [{"step": 9, "primary": "role_name", "won_by": "nth_of_role", "rank": 2}]
+```
+
+The recorded target for that read was `cell "$22.37"` — the answer from the
+recording. It can only ever match the member it was recorded against, so every
+other member falls through to counting cells in a table whose length varies. This
+is the first item in REPORT.md's Cuts, and this directory is it happening.
+
+## The fixture recording
+
+| run | what it shows |
+|---|---|
+| `...002140Z_record-member-lookup-live_d061f6` | a real Claude Opus 5 run driving the local fixture, 3 turns |
 
 Every action the model took, with its own stated reason and the strategy the
 perception layer derived for it:
