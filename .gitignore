@@ -9,6 +9,10 @@ CLAUDE.md
 COMMANDS.md
 SUMMARY.md
 
+# Recordings the console makes during a demo. They are real artifacts, but they
+# are made by clicking a button, not by a decision to add one.
+capabilities/meridian/live_*.json
+
 # Editor-local, same reason as the notes above
 .vscode/
 TESTS.md

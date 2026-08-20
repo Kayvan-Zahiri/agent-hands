@@ -62,16 +62,27 @@ real replays of the file that session produced, which is the argument for the
 whole design in two columns.
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 \
-  --confirmable meridian_funds_transfer
+cd agent-hands
+export PYTHONPATH=.
+
+# only needed for the "Run with the AI" button; everything else works without it
+set -a; . ./.env; set +a
+
+.venv/bin/python -m agent_hands.api --port 8080 --headed \
+  --confirmable meridian_signon_recorded,meridian_inquiry_recorded,\
+meridian_balance_recorded,meridian_transfer_recorded,\
+meridian_open_share_recorded,meridian_update_recorded,meridian_place_hold_recorded
 ```
 
-Then open <http://127.0.0.1:8080/>.
+Then open <http://127.0.0.1:8080/>. **Jobs** → pick one → **Overview** → two
+buttons: *Run with the AI* records it live (20–45s, a window opens and you watch
+the model click), *Run the recording* replays it (about a second).
 
-`--confirmable` names the capabilities whose irreversible steps a caller may
-authorize. Anything not named there stops and asks for a person. Moving money
-also needs the confirmation box ticked, which sends a digest of the exact
-arguments — change any of them and the confirmation stops being valid.
+`--headed` is what makes the browser visible; without it the work happens off
+screen. `--confirmable` names the capabilities whose irreversible steps a caller
+may authorize — four of the seven write, and leaving one off that list makes it
+stop and ask for a person instead. The confirmation carries a digest of the exact
+arguments, so changing the amount invalidates it.
 
 ### The API underneath it
 
