@@ -11,7 +11,8 @@ what it produces is a reviewable artifact that a deterministic engine runs.
 
 ## Quickstart
 
-Everything, from a clean clone. Python 3.10 or newer.
+**Every command is in [RUN.md](RUN.md).** The short version, from a clean
+clone, Python 3.10 or newer:
 
 ```bash
 git clone https://github.com/Kayvan-Zahiri/agent-hands.git
