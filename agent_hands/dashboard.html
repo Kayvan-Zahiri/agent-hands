@@ -50,9 +50,9 @@
     <span class="r" id="conn">connecting</span>
   </div>
   <div id="tabs">
-    <button data-tab="about" aria-current="true">How it works</button>
-    <button data-tab="jobs">Run a job</button>
-    <button data-tab="artifact">What it wrote</button>
+    <button data-tab="about" aria-current="true">Overview</button>
+    <button data-tab="jobs">Run</button>
+    <button data-tab="artifact">Artifact</button>
     <button data-tab="runs">Runs</button>
   </div>
   <div id="body"></div>
@@ -96,7 +96,7 @@ function go(tab) {
 /* ------------------------------ how it works ------------------------------ */
 async function about() {
   $('#body').innerHTML = `
-    <h1>The same job, twice.</h1>
+    <h1>The same job, twice</h1>
     <div id="twice"><p class="dim">Loading…</p></div>`;
   const [{recordings}, {invocations}] = await Promise.all([j('/recordings'), j('/invocations')]);
   const rec = recordings[0];
@@ -108,18 +108,17 @@ async function about() {
   }));
   const clock = m => `${Math.floor(m/60000)}:${String(Math.floor(m/1000)%60).padStart(2,'0')}`;
   $('#twice').innerHTML = `<div class="two">
-    <div><h3>ONCE &mdash; AN AI WORKED IT OUT</h3><div class="in">
+    <div><h3>ONCE &mdash; WITH AN AI</h3><div class="in">
       ${rec.actions.map(a => `<div class="turn"><span class="dim">${clock(a.at_ms)}</span>
-        &nbsp; ${esc((a.detail||'').replace(/ captioned .*/,''))}
-        <br><span class="dim">“${esc(a.why)}”</span></div>`).join('')}
-    </div><div class="foot"><b>${rec.turns} turns of a model</b> &middot;
-      ${(rec.took_ms/1000).toFixed(0)}s &middot; costs money every time</div></div>
-    <div><h3>EVERY TIME SINCE &mdash; AN ENGINE REPEATS IT</h3><div class="in">
-      ${ms.map(m => `<div class="turn"><span class="ok">completed</span>
+        &nbsp; ${esc(short(a.detail))}</div>`).join('')}
+    </div><div class="foot"><b>${rec.turns} model turns</b> &middot;
+      ${(rec.took_ms/1000).toFixed(0)}s</div></div>
+    <div><h3>EVERY TIME SINCE &mdash; NO AI</h3><div class="in">
+      ${ms.map(m => `<div class="turn"><span class="ok">done</span>
         <span class="dim" style="float:right">${m} ms</span></div>`).join('')
-        || '<p class="dim">No replays yet.</p>'}
-    </div><div class="foot"><b>0 model calls</b> &middot; no API key &middot;
-      the same steps, in the same order</div></div>
+        || '<p class="dim">&mdash;</p>'}
+    </div><div class="foot"><b>0 model turns</b> &middot;
+      ${ms.length ? (ms.reduce((a,b)=>a+b,0)/ms.length/1000).toFixed(2) : '0'}s</div></div>
   </div>`;
 }
 
@@ -127,7 +126,7 @@ async function about() {
 function jobs() {
   const live = caps.filter(c => c.id.startsWith('meridian_'));
   $('#body').innerHTML = `
-    <h1>Run a job</h1>
+    <h1>Run</h1>
     <table class="grid"><tr><th>Job</th><th>Capability</th><th>Writes</th></tr>
     ${live.map(c => `<tr class="pick" data-id="${esc(c.id)}">
       <td class="lbl">${esc(title(c))}</td><td class="dim">${esc(c.id)}</td>
@@ -178,7 +177,7 @@ async function artifact() {
   const live = caps.filter(c => c.id.startsWith('meridian_'));
   const pick = chosen && chosen.id.startsWith('meridian_') ? chosen : live[0];
   $('#body').innerHTML = `
-    <h1>What the recording produced</h1>
+    <h1>Artifact</h1>
     <p><select class="fld" id="which" style="width:auto">
       ${live.map(c => `<option value="${esc(c.id)}" ${c.id===pick.id?'selected':''}>
         ${esc(title(c))} — ${esc(c.id)}</option>`).join('')}
@@ -246,13 +245,13 @@ async function show(id) {
     ${Object.keys(outs).length ? `<h2>Result</h2><table class="grid">
       ${Object.entries(outs).map(([k,val]) => `<tr><td class="lbl" width="150">${esc(OUT[k]||k)}</td>
       <td>${esc(val)}</td></tr>`).join('')}</table>` : ''}
-    ${(res.degraded||[]).length ? `<h2>Needs attention</h2>
+    ${(res.degraded||[]).length ? `<h2>Drift</h2>
       <table class="grid">
       ${res.degraded.map(d => `<tr><td width="70">Step ${d.step}</td><td>expected
         ${esc((HOW[d.primary]||[d.primary])[0])}, found
         <span class="warn">${esc((HOW[d.won_by]||[d.won_by])[0])}</span></td></tr>`).join('')}
       </table>` : ''}
-    <h2>What it did</h2>
+    <h2>Steps</h2>
     <table class="grid">${steps.map(s => { const h = s.resolved_by ? HOW[s.resolved_by.strategy] : null;
       return `<tr><td width="26" class="dim">${s.index}</td><td>${esc(said(s))}</td>
         <td width="165">${h?`<span class="tag${h[1]?'':' w'}">${esc(h[0])}</span>`:''}</td>
@@ -260,6 +259,13 @@ async function show(id) {
     }).join('') || '<tr><td class="dim">No steps recorded.</td></tr>'}</table>
     <p style="margin-top:13px"><button class="btn" onclick="go('runs')">Back</button></p>`;
 }
+
+const short = d => (d || '')
+  .replace(/ captioned .*/, '')
+  .replace(/^typed into \w+/, 'typed a value')
+  .replace(/^clicked (link|button) /, 'clicked ')
+  .replace(/^selected '(.+?)' in \w+/, "chose $1")
+  .replace(/^read (\w+) = /, '$1 = ');
 
 function said(s) {
   const m = s.resolved_by && /^\w+ "(.*)"$/.exec(s.resolved_by.value || '');
