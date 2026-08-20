@@ -9,14 +9,53 @@ expensive, non-deterministic, and worth a person's attention. Execution is none
 of those. So a model drives the application exactly once, at record time, and
 what it produces is a reviewable artifact that a deterministic engine runs.
 
-## Setup
+## Quickstart
 
-Python 3.10 or newer.
+Everything, from a clean clone. Python 3.10 or newer.
 
 ```bash
+git clone https://github.com/Kayvan-Zahiri/agent-hands.git
+cd agent-hands
+
 python3 -m venv .venv
-.venv/bin/pip install playwright anthropic
+.venv/bin/pip install -r requirements.txt
 .venv/bin/playwright install chromium
+
+export PYTHONPATH=.
+
+# the demo console -- open http://127.0.0.1:8080/ when it starts
+.venv/bin/python -m agent_hands.api --port 8080 --headed \
+  --confirmable meridian_signon_recorded,meridian_inquiry_recorded,\
+meridian_balance_recorded,meridian_transfer_recorded,\
+meridian_open_share_recorded,meridian_update_recorded,meridian_place_hold_recorded
+```
+
+That needs **no credentials**. It drives the hosted target and replays recorded
+capabilities against it. In the console: **Jobs** → pick one → **Overview** →
+*Run the recording*.
+
+To also use *Run with the AI*, which records a fresh capability by letting a
+model drive the application, add a key first:
+
+```bash
+cp .env.example .env          # put your key in it
+set -a; . ./.env; set +a      # then start the console as above
+```
+
+The tests, which also need no credentials:
+
+```bash
+export PYTHONPATH=.
+.venv/bin/python -m pytest tests -q        # 97
+.venv/bin/python tests/test_replay.py      # 29, real browser
+```
+
+And one capability from the command line:
+
+```bash
+.venv/bin/python -m agent_hands replay capabilities/meridian/meridian_balance_recorded.json \
+  --param operator=teller1 --param password=password --param branch=MAIN-001 \
+  --param member_id=103001 --unattended
 ```
 
 Recording needs `ANTHROPIC_API_KEY`. Replay does not, and that asymmetry is the

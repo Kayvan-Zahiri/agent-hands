@@ -1,0 +1,7 @@
+# Everything the project needs. Only `anthropic` is used at record time; replay,
+# the API, the console and both test suites run without it.
+playwright>=1.40
+anthropic>=0.40
+
+# Running the tests
+pytest>=8.0
