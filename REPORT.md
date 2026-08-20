@@ -18,8 +18,9 @@ replay (many, unattended, no model)  ------------------------->
     for each step: gate -> resolve -> act -> classify -> checkpoint
 ```
 
-The split is the design. Everything expensive and non-deterministic happens once
-and gets reviewed; everything repeated is a fixed list of steps someone signed.
+That split is the whole design. The expensive, unpredictable part happens once
+and a person checks it. The part that runs a thousand times is a fixed list of
+steps someone already approved.
 
 Recorded live against the fixture with Claude Opus 5, this took 3 turns and two
 actions. The artifact it produced replays on members the model never saw:
@@ -30,34 +31,39 @@ member_id=22887 (never seen)     success
 member_id=30021 (never seen)     success
 ```
 
-The model chose *control 3* from a numbered list of accessibility nodes; the
-`labelled_field 'Member ID'` strategy that ended up in the artifact was derived
-by the recorder. Neither half would be much use alone: the model knows which
-control it wants, and the perception layer knows how to keep finding it.
+The model picked *control 3* from a numbered list of what was on screen. The way
+that control is described in the artifact, "the field captioned Member ID", was
+worked out by the recorder afterwards, not by the model. Both halves are needed.
+The model knows which control it wants. The recorder knows how to find that
+control again next month.
 
-Two consequences worth stating, because they are what make it work:
+Two things follow from this, and they are what make it work:
 
-**The model never sees HTML.** It receives the accessibility view: roles, names,
-and the text of each frame. That is a smaller context, but the real reason is
-prompt injection. A hostile string in a customer note field arrives as *the
-content of a cell*, inside a numbered list of controls, rather than as text that
-looks like part of the instructions. This does not eliminate the problem, since
-the model must read the page to work, but it makes the boundary legible.
+**The model never sees HTML.** It sees the same simplified view a screen reader
+would: what each thing is, what it is called, and the text on each panel. That is
+smaller, but the real reason is safety. If someone types instructions into a
+customer note field hoping the model will obey them, that text arrives as the
+label on a numbered row. It never arrives looking like part of our own
+instructions. This does not solve the problem, because the model still has to
+read the page. It does make the line between our instructions and the page's
+own content easy to see.
 
-**The model chooses which control, not how to address it.** Actions name a
-control by its index in the observation it was just shown. It cannot write a
-selector, because a model-authored selector is the one part of the artifact no
-ranking logic ever touched. The perception layer derives the ranked strategies.
-Intent comes from the model; durability comes from the recording.
+**The model chooses which control, not how to find it.** It refers to a control
+by its number in the list it was just shown. It cannot write its own way of
+locating that control. If it could, that would be the one part of the saved
+artifact nothing had checked or ranked. The recorder works out the ways to find
+it, best first. The model supplies the intent; the recorder supplies the part
+that has to survive.
 
 ## Artifact schema
 
 A capability is a name, parameters, outputs, business rules, and an ordered list
 of steps. The two decisions that matter:
 
-**A target is a ranked list, not a selector.** Recording captures every way the
-control could have been identified, ordered by expected survival, together with
-the ones that were *rejected and why*. Replay walks the list.
+**A target is a ranked list of ways to find something, not one selector.** When
+recording, we work out every way that control could have been found and sort
+them, most durable first. We also save the ways that did not work, and why.
+Replay tries them in order and uses the first that hits.
 
 Verbatim from the committed artifact, for the search field:
 
@@ -71,25 +77,27 @@ Verbatim from the committed artifact, for the search field:
        x point                '346,96'      recorded for review only, never replayed
 ```
 
-The rejections are in the artifact on purpose. "Why is this matching by
-position?" is the first question a reviewer asks, and the answer, that the
-control has no accessible name, is a fact about the application rather than a
-shortcut the recorder took.
+The rejected ones are saved on purpose. The first thing a reviewer asks is "why
+is this finding the field by counting?" The answer is that this field has no
+name, no label and no id worth trusting, so counting is all that is left. That
+is a fact about the application, not a shortcut we took.
 
-Note what is *absent*. The field has a perfectly good-looking id, `ctl00_r3_c1`,
-and it is not in the artifact at all, in either list. It is exactly the selector
-a recorder is most tempted by and would pass today, because ASP.NET-era ids like
-that are regenerated per render. `grep ctl00 capabilities/*.json` returns
-nothing, and `test_perception.py` asserts it.
+Notice what is missing. The field has an id that looks perfectly usable,
+`ctl00_r3_c1`, and it appears nowhere in the artifact. It is the obvious thing to
+grab, and it would work today. It is also regenerated every time the page
+renders, so it would break tomorrow. `grep ctl00 capabilities/*.json` returns
+nothing, and a test enforces that.
 
-Every candidate is verified against the live page before it is recorded: it must
-match exactly one element, and that element must be the node being recorded, by
-identity rather than by count. A strategy that matched nothing, matched several,
-or matched the wrong thing is demoted to `rejected` with the count that
-disqualified it. Recording an unverified fallback is worse than recording none,
-because replay will take it and act on the wrong control with full confidence.
+Every way of finding the control is tried against the live page before it gets
+saved. It has to match exactly one thing, and that thing has to be the control we
+mean, checked by identity rather than by counting matches. Anything that matched
+nothing, matched several things, or matched the wrong thing gets moved to the
+rejected list along with the number that disqualified it.
 
-**A result is a three-way tagged union, not an exception.**
+Saving a fallback we never tested would be worse than saving no fallback at all.
+Replay would reach for it, act on the wrong control, and report success.
+
+**A result is one of three answers, not a success-or-crash.**
 
 ```python
 class Outcome(str, enum.Enum):
@@ -98,36 +106,40 @@ class Outcome(str, enum.Enum):
     FAILURE           # the recording no longer matches the application
 ```
 
-"No such member" is the correct result of a lookup that ran perfectly.
-Collapsing it into FAILURE is the single most common mistake in this kind of
-system and makes the capability useless for the case it was built for.
-`ReplayResult.ok` covers the first two.
+"No such member" is the right answer to a lookup that worked perfectly. Filing it
+under FAILURE is the most common mistake in this kind of system, and it makes the
+capability useless for the case it exists to serve: telling a caller the member
+does not exist. `ReplayResult.ok` covers the first two.
 
-Business rules live in the artifact rather than the engine, because which
-screens mean what is a fact about the application. A shared engine that
-hard-codes one tenant's error strings is wrong for the next one.
+The rules that say which screens mean "no such member" live in the artifact, not
+in the engine. What a screen means is a fact about that particular application.
+An engine with one bank's error messages baked into it is wrong for the next
+bank.
 
 ## Determinism & error handling
 
 `replay.py` imports nothing that can reach a model. Same artifact plus same
 input gives the same actions.
 
-Three orderings inside a step, each load-bearing:
+Inside a step, three things happen in a fixed order, and each order matters:
 
-1. **Recoverable conditions before business rules.** Otherwise a session timeout
-   gets read as an answer.
-2. **Business rules before the checkpoint.** Otherwise a legitimate "not found"
-   is reported as a broken click.
-3. **Every step verifies itself.** A click that did not arrive fails at that
-   step, not three steps later as an unrelated extraction error.
+1. **Check for trouble we can recover from, before checking the app's answer.**
+   Otherwise a session timeout gets mistaken for the app answering us.
+2. **Check the app's answer, before checking whether the step worked.** Otherwise
+   a real "no such member" gets reported as a click that failed. This ordering
+   has a cost, and it is written up in Cuts.
+3. **Every step checks itself.** A click that never landed fails right there,
+   rather than three steps later as some unrelated error.
 
-There is no `sleep` in the engine. Every wait is a Playwright condition wait, so
-the assertion is also the synchronisation. A slow page becomes a recovery
-(short budget, then one widened retry) rather than a verdict.
+The engine never sleeps for a fixed number of seconds. It always waits for a
+condition to become true, so the thing it is waiting for and the thing it is
+checking are the same thing. A slow page is treated as something to wait out: a
+short budget first, then one longer try, and only then a verdict.
 
-Recovery is bounded and named, never generic retry: three attempts per step, one
-session re-entry, three flow re-entries. Each is written to the evidence log,
-because silent recovery is how a system degrades for months unnoticed.
+Every kind of retry is counted and named. Three attempts per step, one session
+re-entry, three whole-flow re-entries. There is no generic "just try again".
+Each one is written to the log, because a system that quietly recovers is a
+system that can limp for months before anyone notices.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
 fixture and asserts the outcome of each, 19/19 passing, alongside 92 unit tests
@@ -151,21 +163,29 @@ covering perception, policy, escalation and the CLI:
 | read-only lane vs a write step | failure | refused |
 | mistyped parameter | raises | caller's bug, not a replay outcome |
 
-The two interstitials are separate cases because they need opposite recoveries,
-and getting that wrong is silent. A notice that merely covers the screen can be
-dismissed and the step continued. A notice that *discards* the request has taken
-the typed input with it, so continuing the step would submit an empty form and
-then blame the checkpoint; that one has to re-enter the flow. The engine decides
-between them by asking whether the step's checkpoint already holds after the
-dismissal, and `_dismiss` confirms the notice actually went away rather than
-assuming the click worked.
+The two popup cases are listed separately because they look identical and need
+opposite handling, and getting it wrong fails quietly.
 
-One bug this surfaced, worth recording because it is a correctness issue rather
-than a tidiness one. After a recovery, the engine originally re-ran the step's
-action. For an interstitial that meant navigating straight back into the
-interstitial. On an `IRREVERSIBLE` step it would have meant **submitting twice**.
-The fix is to ask whether the recovery already achieved the step's goal before
-re-acting:
+One popup just sits on top of the page. Close it and carry on where you were.
+
+The other one throws the request away, and takes the member number you typed with
+it. Carrying on there submits an empty form, and the run then blames whichever
+step fails next instead of the popup that caused it. That one has to start the
+flow over.
+
+The engine tells them apart by asking one question after closing the popup: is
+this step's goal already met? If yes, closing the popup was enough. If no, the
+typed input is gone. `_dismiss` also confirms the popup actually went away,
+rather than assuming the click worked.
+
+This turned up a real bug, worth writing down because it was a correctness
+problem rather than an untidiness. After recovering from something, the engine
+used to redo the step's action. For a popup, that meant walking straight back
+into the popup. On a step marked `IRREVERSIBLE`, it would have meant
+**submitting a payment twice**.
+
+The fix is to ask whether the recovery already got us where the step was going,
+before doing anything again:
 
 ```python
 if attempt > 1 and step.checkpoint is not None and self._already_there(step):
@@ -178,8 +198,8 @@ if attempt > 1 and step.checkpoint is not None and self._already_there(step):
 Same vendor product, two institutions: different brand, different field caption
 ("Member ID" vs "Account Number"), different route.
 
-Replaying the tenant-A artifact against tenant B **succeeded**. The interesting
-part is how, and it is the argument for ranked targets:
+A recording made at bank A, replayed against bank B, **worked**. How it worked is
+the whole argument for keeping a ranked list instead of one selector:
 
 ```
 step 1 type
@@ -187,167 +207,190 @@ step 1 type
    failed : labelled_field 'Member ID' -- matched nothing
 ```
 
-The recorded primary strategy missed, because their caption is different, and
-the fallback caught it. The `result.json` says `success`, and **only the
-evidence file shows the degradation**.
+The best way of finding the field missed, because bank B captions it "Account
+Number". The backup caught it. `result.json` just says `success`. **Only the log
+shows that it limped.**
 
-A run that passes on a 0.4-durability fallback is one release away from not
-passing, so degradation is surfaced rather than left implicit: `Resolution`
-exposes `degraded`, the step's evidence line carries `degraded_to_rank`, and
-resolving below the primary logs a warning naming both strategies.
+A run that only passed because it fell back to counting is one release away from
+not passing at all. So falling back is recorded rather than shrugged off: the
+step's log line carries which rank won, and dropping below the best one writes a
+warning naming both.
 
 ```
 target degraded to nth_of_role ('link[0]'); primary was role_name
 ```
 
-What is *not* built is anything that aggregates that across runs: a threshold, a
-dashboard, a ticket when a capability has been limping for a week. The signal
-exists at the point of failure-to-be; nothing yet acts on it.
+What is **not** built is anything that adds those up across runs. No threshold,
+no dashboard, no ticket when a capability has been limping for a week. The
+warning is written down every time; nothing reads it back.
 
-The suite asserts the success half. That a degraded run is *recorded* as degraded
-is checked by reading the log, not by a test, which is how the distinction rots:
+The test suite checks that a degraded run still succeeds. It does not check that
+the run was *recorded* as degraded. That part is verified by a person reading the
+log, which is exactly how a distinction like this quietly stops being true:
 
 | case | expected |
 |---|---|
 | primary strategy missed, fallbacks intact | success, degraded |
 | every strategy missed | failure, `unresolved control` |
 
-The artifact carries `app_id` and `app_variant` so a variant can override
-individual targets rather than forcing a re-record per tenant, but the override
-merge is not implemented.
+The artifact carries `app_id` and `app_variant`, so that one recording could
+carry small per-bank corrections instead of being recorded again for every bank.
+The code that would merge those corrections is not written.
 
 ## Escalation & handoff
 
-Escalation is not the error path. It is the normal path for the long tail, and
-how well it works decides whether anyone trusts the system with the rest.
+Escalation is not the error path. It is the normal path for the awkward cases
+that will always exist, and how well it works decides whether anyone trusts the
+system with the ordinary ones.
 
-**The session is not thrown away.** The expensive part of a back-office task is
-the state: logged in, right record open, three screens deep. An escalation that
-ends the session makes the person redo all of it, so they stop escalating and
-start doing the whole task by hand. The browser stays where it is and the same
-page is handed over.
+**The session is not thrown away.** The expensive part of one of these tasks is
+where you already are: logged in, the right record open, three screens deep. If
+handing over to a person means they start from the login page, they will stop
+using the automation and just do the whole job by hand. So the browser stays
+exactly where it is, and that same page is handed over.
 
-**Ownership is explicit and enforced.** `AUTOMATION -> OPERATOR -> RESUMING ->
-AUTOMATION`, with illegal transitions raising. `RESUMING` is a distinct state
-rather than a flavor of automation: between the handback and a verified
-checkpoint, nobody may act, because neither party knows where the page is. An
-`OwnedPage` wrapper refuses calls from whichever party is not the current owner,
-so a stale reference raises instead of quietly typing into a screen a person is
-halfway through fixing.
+**Exactly one party owns the page at a time, and the code enforces it.** Control
+moves `AUTOMATION -> OPERATOR -> RESUMING -> AUTOMATION`, and any other move
+raises an error.
 
-**Resuming re-verifies rather than assumes.** While the person had control they
-may have navigated elsewhere or already finished the task. On resume the last
-confirmed checkpoint is re-checked and disagreement refuses:
+`RESUMING` is its own state for a reason. Between the moment a person hands
+control back and the moment we have confirmed where the page is, **nobody** is
+allowed to act, because neither side knows what is on screen. A wrapper around
+the page refuses any call from whoever is not the current owner. An old reference
+raises an error instead of quietly typing into a screen a person is halfway
+through fixing.
+
+**Taking control back means checking, not assuming.** While the person had it
+they may have gone somewhere else entirely, or finished the job themselves. So on
+resume we re-check the last thing we know was true, and refuse if it no longer
+is:
 
 ```
 ResumeRefused: page moved during handoff:
   expected text_present='Member Detail', saw 'Member Search'
 ```
 
-No confirmed checkpoint is itself a refusal, not a reason to guess.
+Having nothing confirmed to check against is also a refusal. It is not a reason
+to guess.
 
-The handoff packet carries the capability, step, what was expected, what was on
-screen, the URL, a screenshot and the evidence directory, so the first thing the
-operator sees is a diagnosis rather than a blank terminal.
+What the person receives is not a blank terminal. It names the capability and the
+step, says what was expected and what was actually on screen, and includes the
+URL, a screenshot, and the folder holding everything else from that run.
 
 ## Safety
 
-Gates are structural and checked before dispatch, never negotiated in a prompt.
-A refusal that arrives after the click has landed is not a control.
+Every gate is code that runs before the action is sent, not an instruction in a
+prompt asking the model to behave. A refusal that arrives after the click has
+already landed is not a control, it is a log line.
 
-**Surface.** Host *and* path prefix, checked against the live URL rather than the
-artifact's `entry_url`, because the artifact is data and data can be stale or
-supplied by whoever filed the ticket. A capability is not a general-purpose
-browser pointed at everything the session cookie can reach.
+**Where it may go.** The host, and the part of the site, checked against the URL
+the browser is actually on rather than the one written in the artifact. The
+artifact is just a file, and a file can be out of date, or written by whoever
+filed the ticket. A capability is not a general-purpose browser pointed at
+everything the login session can reach.
 
-**Action.** Which action kinds a lane permits. `policy.read_only()` runs the same
-artifact with writes disabled, rather than maintaining a second artifact.
+**What it may do.** Which kinds of action are allowed. `policy.read_only()` runs
+the very same artifact with anything that writes turned off, so there is no
+second copy to keep in step.
 
-**Risk.** Classified once at record time and reviewed by the person who approves
-the artifact, not judged at runtime. `IRREVERSIBLE` is default-deny: with no
-approver configured it fails closed rather than proceeding unattended.
+**How dangerous each step is.** Decided once, while recording, and reviewed by
+the person who approves the artifact. It is not judged in the moment by anything
+at runtime. A step marked `IRREVERSIBLE` is refused by default: with nobody
+configured to approve it, it stops rather than going ahead unwatched.
 
-**Approval.** A freshly recorded flow is a draft and will not replay. Approval is
-recorded against the artifact version.
+**Approval.** A freshly recorded flow is a draft and will not replay until a
+person approves it. That approval is a plain flag in the file. Nothing ties it to
+the file's contents, so editing an approved artifact does not un-approve it. That
+is written up in Cuts.
 
-**Credentials are never handled.** A session timeout always goes to a person.
+**It never handles credentials.** A session that has timed out always goes to a
+person. The automation has no password to type.
 
 **Redaction on the way out.** Account numbers, SSNs, emails and phone numbers are
 stripped from evidence and logs when they appear in a form the patterns recognize:
 next to a caption, or under a key named `password`/`token`/`secret`. Values returned
-to the caller are not redacted, because the caller asked for the balance. What
-nobody is entitled to is our copy on disk.
+to the caller are left alone, because the caller asked for the balance. What
+nobody needs is our own copy sitting on disk.
 
-It does not hold for a bare value. `redact("12345")` returns it unchanged, and a
-TYPE step writes what it typed, so `run_started` records `member_id: [REDACTED]`
-and the step two lines later records `text: "12345"`. That is the cost of
-redaction without the benefit, and it is in the committed evidence. Redacting the
-typed text of a step is the fix, and it is not done.
+This does not work for a bare value with nothing around it. `redact("12345")`
+returns it unchanged, and a step that types something writes down what it typed.
+So the log records `member_id: [REDACTED]` and then, two lines later, records
+`text: "12345"`. All of the cost of redacting and none of the benefit, and it is
+in the committed evidence. The fix is to redact what a step typed. It is not
+done.
 
 The unattended operator console never answers "resume" and never approves. An
 automatic yes would leave the escalation path untested in exactly the way that
 matters.
 
-One bug worth naming, because it was silent and it was a *safety* bug. `save`
-serializes the whole capability but `load` rebuilt it field by field, so a field
-the reader did not know about was dropped. `approve` loads and saves, so
-approving an artifact **deleted its business rules**, and the loss showed up
-later as an unrelated-looking checkpoint failure. Any field added to
-`Capability` has to be added to `capability_from_json` in the same change; the
-comment there now says so.
+One bug worth naming, because it was silent and it was a *safety* bug. Saving
+wrote out the whole capability, but loading rebuilt it one field at a time, so
+any field the loader had not been told about simply vanished. Approving a
+capability loads it and saves it again. So approving an artifact **deleted its
+business rules**, and that loss turned up much later looking like an unrelated
+step failure. Any field added to `Capability` has to be added to the loader in
+the same change, and the comment there now says so.
 
 ## Cuts
 
 Deliberately not built, in rough order of how much they would matter:
 
-- **A read has no label-relative target.** Values are now numbered and can be
-  read back, but the strategies that address them are ranked for controls. The
-  top one is `role_name`, and for a value cell the name *is* the recorded answer,
-  so it can only match the parameter it was recorded against. Every read against
-  a different parameter therefore degrades to `nth_of_role` and succeeds on
-  position alone. That works, and the run log says so, but the durable target is
-  the one this does not have: the cell to the right of the cell captioned
-  "Savings Balance". `LABELLED_FIELD` is exactly that idea and applies only to
-  form fields. Extending it to value cells is the next thing worth doing here.
+- **There is no good way to find a value by its label.** Values can now be read
+  back, but the ways of finding things were designed for buttons and boxes. The
+  best one is "find the thing whose text is X" -- and for a balance, that text
+  *is* the answer we recorded. It can only ever match the member we recorded
+  against. So every read for a different member falls back to counting boxes,
+  and works on position alone. It works, and the log says so, but the landmark
+  that would actually last is one this does not have: *the box to the right of
+  the box that says "Savings Balance"*. The system already does exactly that
+  trick for typing into form fields. Extending it to values is the next thing
+  worth building here.
 
-  This is not only a durability point. Position is silently wrong, where the
-  other strategies are loudly wrong. Inserting one "Member Since" row above the
-  balances shifts every later cell down, and the recorded read comes back:
+  This is not just about durability. Counting boxes is wrong **quietly**, where
+  everything else is wrong loudly. Insert one "Member Since" row above the
+  balances and every box below it shifts down, so the recorded read comes back
+  with:
 
       truth       savings 76230.18    checking 9902.77
       returned    savings 2019-04-11  checking 76230.18   exit 0, "flow completed"
 
-  A date, reported as a balance, with a success code. A missing landmark stops
-  the run and captures the screen; a landmark that moved does not, because
-  finding *a* seventh cell is indistinguishable from finding *the* seventh cell.
-  Reads carry that risk and clicks largely do not: a click that lands on the
-  wrong control usually fails its checkpoint, while a read has nothing to
-  contradict it. Anchoring reads to their label is what closes this.
+  A date, handed back as a savings balance, with a success code.
 
-- **Identity and audit.** The policy layer gates *what* runs, not *who* asked.
-  Per-caller scoping and an attributable approvals trail belong to whatever calls
-  this. Named rather than half-built.
-- **The operator console is a terminal stub.** Everything above it, the
-  ownership machine, the packet, the re-verification, is real. In a deployment
-  the console is a queue, a review UI, an authenticated operator and a shared
-  browser session. `OperatorConsole` is the seam; nothing above it changes.
-- **Skip-a-step and completed-by-hand are not implemented.** `Decision.SKIP` and
-  `Decision.COMPLETED` exist in the enum, but `replay.py` acts on `RESUME` and
-  stops on everything else, so both would silently abort. The console offers only
-  resume and abort rather than four buttons wired to two outcomes. Skipping a step
-  means not asserting its checkpoint either, and completed-by-hand means asserting
-  it without having acted, so neither is a one-line addition.
-- **Degradation aggregation.** A run that passes on a fallback is detected,
-  recorded in the evidence and logged. Nothing rolls that up across runs to
-  notice a capability has been limping for a week, which is where it would
-  actually get acted on.
-- **Variant target overrides.** The schema carries `app_variant`; the merge that
-  would let one artifact carry per-tenant target overrides is not written.
-- **Native desktop.** The accessibility abstraction was chosen partly because
-  UIA and AX expose the same role-and-name vocabulary, so the targeting layer
-  should carry over. No backend is implemented, so that is a claim, not a result.
-- **Concurrency.** One session, one run. No pooling, no locking across runs
-  against the same record.
+  A landmark that has *vanished* stops the run and screenshots the page. A
+  landmark that merely *moved* does not, because finding a seventh box looks
+  exactly like finding the seventh box. Reads carry this risk and clicks mostly
+  do not: a click that lands on the wrong thing usually fails its own check,
+  while a read has nothing to contradict it. Anchoring a read to its label is
+  what closes this.
+
+- **No identity, no audit trail.** The rules control *what* may run, never *who*
+  asked for it. Limiting what each caller may do, and keeping a record of who
+  approved what, belong to whatever system calls this one. Named here rather
+  than half-built.
+- **The operator console is a terminal prompt, not a real one.** Everything
+  behind it is real: who owns the page, the handover packet, the re-check on
+  resume. In a real deployment the console would be a work queue, a review
+  screen, a logged-in operator and a shared browser. `OperatorConsole` is the one
+  piece that gets replaced. Nothing behind it changes.
+- **"Skip this step" and "I did it myself" are not built.** Both exist as names
+  in the code, but replay only acts on "resume" and stops on everything else, so
+  either would quietly abort. The console therefore offers two buttons rather
+  than four buttons wired to two behaviors. Neither is a one-liner: skipping a
+  step means also not checking whether it worked, and "I did it myself" means
+  checking that it worked without having done anything.
+- **Nothing adds up the warnings.** A run that only passed because it fell back
+  is spotted, logged and saved every single time. Nothing reads those back across
+  many runs to notice that a capability has been limping for a week, which is
+  where somebody would actually act on it.
+- **Per-bank corrections are not merged.** The file has a slot for which bank's
+  version of the app this is. The code that would let one recording carry small
+  corrections for each bank is not written.
+- **Desktop apps.** Reading the screen the way a screen reader does was chosen
+  partly because Windows and macOS expose desktop apps the same way, in terms of
+  what each thing is and what it is called. So the finding-things layer should
+  carry across. Nothing is built for it, so that is a claim, not a result.
+- **One run at a time.** One browser session, one run. Nothing shares sessions,
+  and nothing stops two runs touching the same customer record at once.
 - **Discovery explores one path, and never checks its own work.** The live run
   records the successful route and stops. It does not probe the not-found or
   validation branches, so the business rules that separate an answer from a fault
@@ -387,10 +430,13 @@ Deliberately not built, in rough order of how much they would matter:
 
 ### On the fixture
 
-It is a fixture, not a deliverable, and its failure modes are switched by query
-parameter rather than arising naturally. That makes them deterministic, which is
-what let each branch be tested, but it does mean the recovery rules are matched
-against text I also wrote. On a real application those rules would be authored
-per tenant and would be the fiddliest part of onboarding. The rules are a
-`CONDITIONS` table in `replay.py` for exactly that reason: they are data someone
-edits, not logic someone rewrites.
+The fake bank app is a test target, not part of what is being delivered. Its
+failures are switched on with a query parameter rather than happening on their
+own. That makes them repeatable, which is what let every branch be tested. It
+also means the rules for recognizing trouble are matched against text I wrote
+myself.
+
+On a real application those rules would be written per bank, and they would be
+the fiddliest part of setting up a new one. That is exactly why they sit in a
+plain table in `replay.py` rather than being spread through the code. They are
+data for someone to edit, not logic for someone to rewrite.
