@@ -1,631 +1,280 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-hands · what it is and what it did</title>
+<title>Capability Console</title>
 <style>
-:root {
-  --bg:#f5f7fa; --surface:#fff; --raised:#fafbfc; --line:#e4e8ee; --line-2:#ccd3dd;
-  --ink:#151a21; --ink-2:#4c5666; --ink-3:#7a8494;
-  --brand:#3552d4; --brand-2:#eaeefc;
-  --ok:#0d7f57; --ok-2:#e6f5ee; --warn:#9c6410; --warn-2:#fdf2e0;
-  --bad:#bd3a31; --bad-2:#fdeeec; --live:#2573c9; --live-2:#e8f1fb;
-  --sh:0 1px 2px rgba(18,24,33,.05),0 4px 14px rgba(18,24,33,.05);
-}
-@media (prefers-color-scheme:dark){:root{
-  --bg:#0e1014; --surface:#15191f; --raised:#1a1f26; --line:#242a33; --line-2:#333b47;
-  --ink:#e9edf3; --ink-2:#a8b2c0; --ink-3:#798394;
-  --brand:#8299fa; --brand-2:#1a2237;
-  --ok:#4cc68e; --ok-2:#11271e; --warn:#dba746; --warn-2:#281f12;
-  --bad:#e97a6e; --bad-2:#2b1716; --live:#63aae9; --live-2:#112130;
-  --sh:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.3);
-}}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);
-  font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,Helvetica,sans-serif;
-  -webkit-font-smoothing:antialiased}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em}
-
-/* chrome */
-.top{height:58px;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--surface);
-  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-.logo{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;
-  display:grid;place-items:center;font-weight:700;font-size:14px}
-.top h1{font-size:14.5px;font-weight:650;line-height:1.2}
-.top h1 span{display:block;font-size:11.5px;font-weight:400;color:var(--ink-3)}
-.grow{flex:1}
-.link{background:none;border:0;font:inherit;font-size:13px;color:var(--brand);cursor:pointer;
-  padding:6px 10px;border-radius:7px}
-.link:hover{background:var(--brand-2)}
-.toggle{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);cursor:pointer}
-.toggle input{width:15px;height:15px;accent-color:var(--brand);cursor:pointer}
-
-/* layout */
-.app{display:grid;grid-template-columns:300px minmax(0,1fr) 300px;height:calc(100vh - 58px)}
-.col{overflow-y:auto;padding:18px}
-.col+.col{border-left:1px solid var(--line)}
-aside,.rail{background:var(--surface)}
-.eyebrow{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:4px}
-.sub{font-size:12px;color:var(--ink-3);margin-bottom:12px;line-height:1.45}
-
-/* ask */
-.askbox{position:relative;margin-bottom:8px}
-.askbox svg{position:absolute;left:11px;top:13px;width:15px;height:15px;color:var(--ink-3)}
-input{width:100%;font:inherit;color:var(--ink);background:var(--surface);
-  border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;transition:.12s}
-#ask{padding-left:33px}
-input:focus{outline:0;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-2)}
-input::placeholder{color:var(--ink-3)}
-
-/* catalog */
-.grp{margin-top:18px}
-.grp h4{font-size:12px;font-weight:650;margin-bottom:1px}
-.grp p{font-size:11.5px;color:var(--ink-3);margin-bottom:8px;line-height:1.4}
-.item{width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:9px;
-  padding:9px 10px;cursor:pointer;display:block;margin-bottom:2px;transition:.12s}
-.item:hover{background:var(--raised);border-color:var(--line)}
-.item[aria-current=true]{background:var(--brand-2);border-color:var(--brand)}
-.item .t{display:flex;align-items:center;gap:7px}
-.item .n{font-weight:570;font-size:13.5px}
-.item .d{font-size:12px;color:var(--ink-3);margin-top:2px;line-height:1.4}
-.item .id{display:none}
-body.tech .item .id{display:block;font-size:11px;color:var(--ink-3);margin-top:3px;
-  font-family:ui-monospace,Menlo,monospace}
-.tag{font-size:10px;font-weight:650;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;
-  border-radius:5px;background:var(--bad-2);color:var(--bad);white-space:nowrap}
-.tag.g{background:var(--raised);color:var(--ink-3);border:1px solid var(--line)}
-
-/* main */
-main{padding:28px 34px}
-main>*{max-width:900px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:11px;
-  box-shadow:var(--sh);padding:22px;margin-bottom:16px}
-.card>h3{font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:5px}
-.card>h3+.hint{margin-bottom:14px}
-.hint{font-size:12.5px;color:var(--ink-3);line-height:1.5}
-h2{font-size:22px;font-weight:660;letter-spacing:-.02em;margin-bottom:5px}
-.lede{color:var(--ink-2);font-size:14px;max-width:64ch}
-
-/* explainer */
-.hero{max-width:70ch}
-.hero .kicker{font-size:12px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--brand);margin-bottom:9px}
-.hero h2{font-size:27px;line-height:1.25;margin-bottom:11px}
-.hero p{color:var(--ink-2);font-size:15px;margin-bottom:11px}
-.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;
-  align-items:stretch;margin:6px 0 4px}
-.beat{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:15px}
-.beat .num{width:22px;height:22px;border-radius:6px;background:var(--brand);color:#fff;
-  font-size:12px;font-weight:700;display:grid;place-items:center;margin-bottom:9px}
-.beat h5{font-size:13.5px;font-weight:620;margin-bottom:5px}
-.beat p{font-size:12.5px;color:var(--ink-2);line-height:1.5}
-.beat.no .num{background:var(--ink-3)}
-.arrow{align-self:center;color:var(--ink-3);font-size:17px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.compare{border:1px solid var(--line);border-radius:10px;padding:15px}
-.compare.bad{background:var(--bad-2);border-color:transparent}
-.compare.good{background:var(--ok-2);border-color:transparent}
-.compare h5{font-size:13px;font-weight:640;margin-bottom:8px}
-.compare.bad h5{color:var(--bad)} .compare.good h5{color:var(--ok)}
-.compare li{font-size:12.5px;color:var(--ink-2);list-style:none;padding-left:17px;
-  position:relative;margin-bottom:5px;line-height:1.45}
-.compare li::before{position:absolute;left:0;top:0}
-.compare.bad li::before{content:"✕";color:var(--bad)}
-.compare.good li::before{content:"✓";color:var(--ok)}
-
-/* the same job, twice */
-.twice{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
-.phase{border-radius:10px;padding:17px;border:1px solid var(--line);background:var(--raised)}
-.phase.model{background:var(--brand-2);border-color:transparent}
-.phase.engine{background:var(--ok-2);border-color:transparent}
-.phase .cap{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
-  margin-bottom:3px}
-.phase.model .cap{color:var(--brand)} .phase.engine .cap{color:var(--ok)}
-.phase h5{font-size:14.5px;font-weight:640;margin-bottom:10px}
-.goal{font-size:12.5px;color:var(--ink-2);font-style:italic;padding:9px 12px;border-radius:8px;
-  background:var(--surface);margin-bottom:13px;line-height:1.45}
-.turn{display:grid;grid-template-columns:46px 1fr;gap:10px;padding:8px 0;
-  border-top:1px solid rgba(128,140,160,.18)}
-.turn:first-of-type{border-top:0}
-.turn .clock{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;padding-top:1px}
-.turn .did{font-size:13px;font-weight:550}
-.turn .said{font-size:12.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
-.turn .said::before{content:"“"} .turn .said::after{content:"”"}
-.rep{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px;
-  border-top:1px solid rgba(128,140,160,.18)}
-.rep:first-of-type{border-top:0}
-.rep .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
-.rep .t{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.tally{margin-top:13px;padding-top:11px;border-top:1px solid rgba(128,140,160,.25);
-  font-size:12.5px;line-height:1.5}
-.tally b{font-weight:650}
-.phase.model .tally b{color:var(--brand)} .phase.engine .tally b{color:var(--ok)}
-@media(max-width:900px){.twice{grid-template-columns:1fr}}
-
-/* form */
-.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
-.field label{display:block;font-size:12.5px;font-weight:570;margin-bottom:4px}
-.field .ty{display:none} body.tech .field .ty{display:inline;color:var(--ink-3);font-weight:400;margin-left:5px}
-.field .why{font-size:11.5px;color:var(--ink-3);margin-top:4px;line-height:1.4}
-.warnbox{display:flex;gap:11px;padding:14px 16px;border-radius:9px;background:var(--warn-2);margin-top:18px}
-.warnbox .i{color:var(--warn);font-size:15px;flex:none}
-.warnbox p{font-size:13px;color:var(--ink-2);line-height:1.5}
-.warnbox strong{color:var(--ink)}
-.confirm{display:flex;align-items:center;gap:9px;margin-top:12px;font-size:13.5px;cursor:pointer}
-.confirm input{width:16px;height:16px;accent-color:var(--brand)}
-.go{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 20px;
-  font:inherit;font-weight:600;cursor:pointer;margin-top:20px}
-.go:hover{filter:brightness(1.08)} .go:disabled{opacity:.55;cursor:default}
-.spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
-  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-2px;margin-right:7px}
-@keyframes sp{to{transform:rotate(360deg)}}
-
-/* verdict */
-.verdict{display:flex;gap:14px;align-items:flex-start}
-.vicon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:18px;flex:none}
-.v-success .vicon{background:var(--ok-2);color:var(--ok)}
-.v-business_outcome .vicon{background:var(--warn-2);color:var(--warn)}
-.v-failure .vicon{background:var(--bad-2);color:var(--bad)}
-.v-running .vicon{background:var(--live-2);color:var(--live)}
-.verdict h4{font-size:16.5px;font-weight:640;margin-bottom:3px}
-.verdict p{font-size:13.5px;color:var(--ink-2)}
-
-/* outputs */
-.outs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
-.out{border:1px solid var(--line);border-radius:9px;padding:13px 15px;background:var(--raised)}
-.out .k{font-size:11.5px;color:var(--ink-3);margin-bottom:3px}
-.out .v{font-size:19px;font-weight:620;letter-spacing:-.01em;word-break:break-word}
-
-/* steps */
-.steps{position:relative;padding-left:24px}
-.steps::before{content:"";position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--line)}
-.st{position:relative;padding:8px 0}
-.st::before{content:"";position:absolute;left:-21px;top:15px;width:9px;height:9px;border-radius:50%;
-  background:var(--line-2);border:2px solid var(--surface)}
-.st.ok::before{background:var(--ok)} .st.no::before{background:var(--bad)}
-.st .say{font-size:13.5px}
-.st .meta{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap}
-.how{font-size:11.5px;padding:1px 7px;border-radius:5px;background:var(--ok-2);color:var(--ok)}
-.how.weak{background:var(--warn-2);color:var(--warn)}
-.tech{display:none} body.tech .tech{display:block}
-body.tech .st .tech{display:inline}
-.err{font-size:12.5px;color:var(--bad);margin-top:3px}
-
-/* runs */
-.run{width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:9px;
-  padding:9px 10px;cursor:pointer;display:block;margin-bottom:2px;transition:.12s}
-.run:hover{background:var(--raised);border-color:var(--line)}
-.run[aria-current=true]{background:var(--brand-2);border-color:var(--brand)}
-.run .r1{display:flex;align-items:center;gap:8px}
-.run .dot{width:7px;height:7px;border-radius:50%;flex:none}
-.run .nm{font-weight:560;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.run .r2{font-size:11.5px;color:var(--ink-3);margin-top:2px;padding-left:15px}
-.d-success{background:var(--ok)} .d-business_outcome{background:var(--warn)}
-.d-failure{background:var(--bad)} .d-running{background:var(--live)} .d-completed{background:var(--ink-3)}
-.banner{padding:12px 15px;border-radius:9px;background:var(--bad-2);color:var(--bad);font-size:13px;margin-top:14px}
-@media(max-width:1150px){.app{grid-template-columns:260px minmax(0,1fr)}.rail{display:none}}
-@media(max-width:820px){.two{grid-template-columns:1fr}}
+  body { background:#c8c8c8; margin:0; }
+  body, td, th, input, button { font-family:Verdana,Arial,sans-serif; font-size:12px; color:#000; }
+  a { color:#0000aa; }
+  #page { width:880px; margin:14px auto 40px; background:#fff; border:1px solid #003366; }
+  #bar { background:#003366; padding:7px 10px; color:#fff; }
+  #bar b { font-size:14px; } #bar span { color:#a9c2e0; font-size:11px; }
+  #bar .r { float:right; color:#a9c2e0; font-size:11px; }
+  #tabs { background:#eef2f7; border-bottom:1px solid #003366; padding:0 10px; }
+  #tabs button { font:inherit; background:none; border:0; border-bottom:3px solid transparent;
+    padding:7px 13px; cursor:pointer; color:#0000aa; }
+  #tabs button[aria-current=true] { border-bottom-color:#003366; color:#000; font-weight:bold; }
+  #body { padding:16px 18px 24px; }
+  h1 { font-size:13px; margin:0 0 4px; }
+  h2 { font-size:12px; margin:20px 0 7px; color:#003366; border-bottom:1px solid #c9d4e2;
+       padding-bottom:3px; }
+  p { margin:0 0 9px; line-height:1.55; }
+  .dim { color:#555; }
+  .box { border:1px solid #003366; background:#eef2f7; padding:11px 13px; }
+  table.grid { border-collapse:collapse; width:100%; }
+  table.grid th { text-align:left; background:#eef2f7; color:#003366; font-size:11px;
+    padding:4px 8px; border-bottom:1px solid #003366; white-space:nowrap; }
+  table.grid td { padding:5px 8px; border-bottom:1px solid #e2e6ec; vertical-align:top; }
+  tr.pick { cursor:pointer; } tr.pick:hover td { background:#eef2f7; }
+  .lbl { font-weight:bold; }
+  .err { color:#a00000; font-weight:bold; } .ok { color:#006600; font-weight:bold; }
+  .warn { color:#8a5a00; font-weight:bold; }
+  .fld { border:1px solid #7f9db9; background:#fff; padding:2px 3px; font-size:12px; width:100%; }
+  .btn { font:inherit; padding:3px 13px; }
+  .req { color:#a00000; }
+  .two { display:flex; gap:14px; }
+  .two > div { flex:1; border:1px solid #003366; display:flex; flex-direction:column; }
+  .two h3 { margin:0; background:#003366; color:#fff; font-size:11px; padding:5px 8px; }
+  .two .in { padding:9px 10px; flex:1; }
+  .turn { border-top:1px solid #e2e6ec; padding:5px 0; }
+  .turn:first-child { border-top:0; }
+  .foot { border-top:1px solid #003366; background:#eef2f7; padding:6px 10px; font-size:11px; }
+  .tag { font-size:10px; background:#eef2f7; border:1px solid #c9d4e2; padding:0 5px; color:#333; }
+  .tag.w { background:#fdf3e2; border-color:#e0c68a; color:#8a5a00; }
+  pre { background:#f7f8fa; border:1px solid #c9d4e2; padding:9px; overflow:auto;
+        max-height:420px; font-family:Menlo,Consolas,monospace; font-size:11px; margin:0; }
 </style>
 
-<header class="top">
-  <div class="logo">◆</div>
-  <h1>agent-hands<span>driving a legacy banking system, without an AI in the loop</span></h1>
-  <div class="grow"></div>
-  <button class="link" id="explain">What is this?</button>
-  <label class="toggle"><input type="checkbox" id="tech"> Technical detail</label>
-</header>
-
-<div class="app">
-  <aside class="col">
-    <div class="eyebrow">Ask for something</div>
-    <p class="sub">Type a request in plain words, or pick a job below.</p>
-    <div class="askbox">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-        <circle cx="9" cy="9" r="6"/><path d="M13.5 13.5 17 17" stroke-linecap="round"/></svg>
-      <input id="ask" placeholder="check the balance for 103001" autocomplete="off">
-    </div>
-    <p class="hint" id="askhint">Matched on keywords, not by an AI — so you can see exactly
-      why it picked what it picked.</p>
-    <div id="catalog"></div>
-  </aside>
-
-  <main class="col" id="main"></main>
-
-  <section class="col rail">
-    <div class="eyebrow">Recent activity</div>
-    <p class="sub">Every job this system has run, newest first.</p>
-    <div id="runs"></div>
-  </section>
+<div id="page">
+  <div id="bar">
+    <b>CAPABILITY CONSOLE</b><span>&nbsp;&nbsp;agent-hands &nbsp; v1.0</span>
+    <span class="r" id="conn">connecting</span>
+  </div>
+  <div id="tabs">
+    <button data-tab="about" aria-current="true">How it works</button>
+    <button data-tab="jobs">Run a job</button>
+    <button data-tab="artifact">What it wrote</button>
+    <button data-tab="runs">Runs</button>
+  </div>
+  <div id="body"></div>
 </div>
 
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const j = (u,o) => fetch(u,o).then(r => r.json().then(b => ({status:r.status, body:b})));
-let caps = [], chosen = null, current = null;
+const j = (u, o) => fetch(u, o).then(r => r.json());
+let caps = [], chosen = null;
 
-/* ---------------------------------------------------------------
-   Plain English. The artifact speaks in the application's own
-   vocabulary -- shares, operators, business outcomes -- which is
-   correct for the file and useless for anyone meeting this cold.
-   Everything a person reads is translated here, once.
-----------------------------------------------------------------*/
-const JOBS = {
-  meridian_signon:         ['Sign in',              'Signs in to the banking system as a branch employee, the same way a person would.'],
-  meridian_member_inquiry: ['Find a customer',      'Looks someone up by their account number or surname and opens their record.'],
-  meridian_member_balance: ['Check a balance',      'Reads how much is in one of a customer’s accounts, and whether it is frozen.'],
-  meridian_funds_transfer: ['Move money',           'Transfers an amount between two of a customer’s own accounts. Real, and cannot be undone.'],
-  meridian_open_share:     ['Open an account',      'Opens an additional account for a customer with a starting deposit.'],
-  meridian_update_member:  ['Update contact details','Changes a customer’s email, phone or mailing address.'],
-  meridian_place_hold:     ['Freeze an account',    'Puts a hold on an account. Restricted — a teller is refused, a supervisor must do it.'],
+const NAMES = {
+  signon:'Sign in', inquiry:'Find a customer', balance:'Check a balance',
+  transfer:'Move money', open_share:'Open an account', update:'Update contact details',
+  hold:'Freeze an account',
 };
-// Two applications, and the difference matters to anyone reading this cold: one is
-// the hosted system this was built to drive, the other is a local copy used to test
-// the engine itself. Grouping them together would suggest a customer's money is in both.
-const APPS = {
-  live:     ['Meridian Core', 'The hosted credit-union system. No API — the screen is the only way in. These run against it for real.'],
-  practice: ['Practice app', 'A local stand-in used to test the engine. Nothing here touches a real system.'],
-};
-const appOf = c => c.id.startsWith('meridian_') ? 'live' : 'practice';
-const job = c => JOBS[c.id] ||
-  [c.id.replace(/_/g, ' ').replace('@', ' — '), c.description || ''];
+function title(c) {
+  for (const k in NAMES) if (c.id.includes(k)) return NAMES[k];
+  return c.id.replace(/_/g, ' ');
+}
+const FIELD = { operator:'Operator ID', password:'Password', branch:'Branch',
+  member_id:'Member No.', share_id:'Account', value:'Search value', search_by:'Search by',
+  amount:'Amount', memo:'Memo', from_share:'From account', to_share:'To account',
+  share_type:'Account type', deposit:'Opening deposit', reason:'Reason code', notes:'Notes',
+  email:'E-mail', phone:'Phone', address:'Mailing address' };
+const OUT = { member_name:'Name', balance:'Balance', savings_balance:'Balance', status:'Status',
+  confirmation:'Confirmation', confirmation_number:'Confirmation', new_share_id:'New account' };
+const VERDICT = { success:['ok','COMPLETED'], business_outcome:['warn','THE SYSTEM ANSWERED'],
+  failure:['err','STOPPED'], running:['dim','RUNNING'], completed:['dim','FINISHED'] };
+const HOW = { role_name:['by its name on screen',1], role_name_in_region:['by its name on screen',1],
+  labelled_field:['by the label beside it',1], nth_of_role:['by counting — fragile',0],
+  dom_path:['by page structure — fragile',0] };
 
-const PARAM = {
-  operator:'the employee ID', password:'the password', branch:'the branch',
-  member_id:'the customer number', share_id:'the account', value:'what to search for',
-  search_by:'how to search', amount:'the amount', memo:'the memo',
-  from_share:'the account to take money from', to_share:'the account to pay money into',
-  share_type:'the type of account', deposit:'the opening deposit', reason:'the reason',
-  notes:'the notes', email:'the email address', phone:'the phone number', address:'the address',
-};
-const OUT = {
-  member_name:'Customer', balance:'Balance', status:'Account status',
-  confirmation:'Confirmation number', savings_balance:'Savings balance', detail:'Detail',
-};
-const HOW = {
-  role_name:            ['by its name on screen', 1],
-  role_name_in_region:  ['by its name on screen', 1],
-  labelled_field:       ['by the label next to it', 1],
-  nth_of_role:          ['by counting boxes — fragile', 0],
-  dom_path:             ['by the page’s structure — fragile', 0],
-};
-
-function saidStep(s) {
-  const ctrl = s.resolved_by && /^(\w+) "(.*)"$/.exec(s.resolved_by.value || '');
-  const named = ctrl ? `“${ctrl[2]}”` : 'a control';
-  const p = (s.text || '').replace(/^\{(.+)\}$/, (_, n) => PARAM[n] || n);
-  switch (s.action) {
-    case 'navigate': return `Opened <b>${esc((s.url || '').replace(/^https?:\/\/[^/]+/, '') || 'the application')}</b>`;
-    case 'type':     return `Entered ${esc(p)}`;
-    case 'select':   return `Chose ${esc(p)}`;
-    case 'click':    return `Clicked ${esc(named)}`;
-    case 'read':     return `Read ${s.extra && s.extra.read ? `<b>${esc(s.extra.read)}</b>` : 'a value'} off the screen`;
-    default:         return `Waited for the screen`;
-  }
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));
+function go(tab) {
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.tab === tab));
+  ({about, jobs, artifact, runs})[tab]();
 }
 
-const VERDICT = {
-  success:          ['✓', 'Done',                  'The job ran all the way through and every check passed.'],
-  business_outcome: ['!',      'The system said no',    'Not a breakage — the application gave a real answer, and this is it.'],
-  failure:          ['✕', 'Stopped',               'Something did not match what was recorded, so it stopped instead of guessing.'],
-  running:          ['●', 'Running…',         'Driving the application in a real browser right now.'],
-  completed:        ['●', 'Finished',              ''],
-};
-
-/* ---------------- the explainer ---------------- */
-function explain() {
-  chosen = null; current = null;
-  document.querySelectorAll('.item,.run').forEach(el => el.setAttribute('aria-current','false'));
-  $('#main').innerHTML = `
-    <div class="hero">
-      <div class="kicker">What this is</div>
-      <h2>Some banking systems have no way in except the screen.</h2>
-      <p>Credit unions run back-office software that predates the idea of an API. To check a
-         balance or move money between a customer’s accounts, an employee signs in and clicks
-         through pages built two decades ago. There is no other door.</p>
-      <p>So if you want software to do that work, it has to use the screen too — like a person.
-         That is easy to demo and hard to trust, because money is involved.</p>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3>The problem</h3>
-      <p class="hint">Pointing an AI at the screen and letting it work things out fresh each time
-        is the obvious approach. It is also the one you cannot put near a transfer.</p>
-      <div class="two" style="margin-top:16px">
-        <div class="compare bad">
-          <h5>An AI decides every time</h5>
-          <ul>
-            <li>Does something slightly different on every run</li>
-            <li>Nobody approved the steps, because there are no fixed steps</li>
-            <li>Costs money and time on every single run</li>
-            <li>When a screen changes it improvises — and clicks the wrong thing confidently</li>
-          </ul>
-        </div>
-        <div class="compare good">
-          <h5>Decide once, then repeat</h5>
-          <ul>
-            <li>Same steps every run, so the result is predictable</li>
-            <li>A person reads and approves the steps before anything runs</li>
-            <li>Free after the first time — no AI is involved</li>
-            <li>When a screen changes it notices, and stops rather than guessing</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>The same job, twice</h3>
-      <p class="hint">Not a diagram — this is a real recorded session on the left, and real
-        replays of the file it produced on the right.</p>
-      <div id="twice"><p class="hint" style="margin-top:14px">Loading…</p></div>
-    </div>
-
-    <div class="card">
-      <h3>What you are looking at</h3>
-      <p class="hint">The right-hand side of that comparison, for every job. Ask for one on the
-        left and it drives the real application in a real browser, with no model involved. Each run
-        is listed on the right — what it did, in order, what it read back, and whether anything on
-        screen had moved since the recording was made.</p>
-      <p class="hint" style="margin-top:10px">Turn on <b>Technical detail</b> in the header to see
-        the machinery underneath.</p>
-    </div>`;
-  renderTwice();
-}
-
-/* The argument, made with evidence rather than a diagram: what it cost to work
-   this out once, next to what it costs to do it again. */
-const clock = ms => `${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`;
-const secs  = ms => ms < 1000 ? `${ms} ms` : `${(ms/1000).toFixed(ms < 10000 ? 2 : 1)} s`;
-
-function turnSaid(a) {
-  const m = /captioned "'?(.+?)'?"/.exec(a.detail || '') || /'(.+?)'/.exec(a.detail || '');
-  const what = m ? `“${m[1]}”` : 'a control';
-  return a.action === 'type' ? `Typed into the field labelled ${what}`
-       : a.action === 'click' ? `Clicked ${what}`
-       : a.action === 'select' ? `Chose ${what}`
-       : `Read ${what}`;
-}
-
-async function renderTwice() {
-  const host = document.querySelector('#twice');
-  if (!host) return;
-  const [{body: recs}, {body: hist}] = await Promise.all([j('/recordings'), j('/invocations')]);
-  const rec = (recs.recordings || [])[0];
-  if (!rec) { host.innerHTML = '<p class="hint">No recorded session on this machine yet.</p>'; return; }
-
-  const replays = (hist.invocations || []).filter(r => r.capability === rec.produced);
-  const timed = await Promise.all(replays.slice(0, 4).map(async r => {
-    const {body: ev} = await j(`/invocations/${r.run_id}/events`);
-    const last = ev.events[ev.events.length - 1] || {};
-    return {...r, ms: last.elapsed_ms};
+/* ------------------------------ how it works ------------------------------ */
+async function about() {
+  $('#body').innerHTML = `
+    <h1>The same job, twice.</h1>
+    <div id="twice"><p class="dim">Loading…</p></div>`;
+  const [{recordings}, {invocations}] = await Promise.all([j('/recordings'), j('/invocations')]);
+  const rec = recordings[0];
+  if (!rec) return $('#twice').innerHTML = '<p class="dim">No recording on this machine.</p>';
+  const reps = invocations.filter(r => r.capability === rec.produced).slice(0, 5);
+  const ms = await Promise.all(reps.map(async r => {
+    const ev = await j(`/invocations/${r.run_id}/events`);
+    return (ev.events[ev.events.length - 1] || {}).elapsed_ms;
   }));
-
-  host.innerHTML = `<div class="twice">
-    <div class="phase model">
-      <div class="cap">Once</div>
-      <h5>An AI worked out how to do it</h5>
-      <div class="goal">${esc(rec.goal)}</div>
-      ${rec.actions.map(a => `<div class="turn">
-        <div class="clock">${clock(a.at_ms)}</div>
-        <div><div class="did">${esc(turnSaid(a))}</div>
-          <div class="said">${esc(a.why)}</div></div></div>`).join('')}
-      <div class="turn"><div class="clock">${clock(rec.took_ms)}</div>
-        <div><div class="did">Finished</div>
-          <div class="said">${esc(rec.summary)}</div></div></div>
-      <div class="tally"><b>${rec.turns} turns of a model</b> · ${secs(rec.took_ms)} ·
-        needs an API key, and costs money every time you do it.</div>
-    </div>
-
-    <div class="phase engine">
-      <div class="cap">Every time since</div>
-      <h5>An engine repeats it, with nothing deciding</h5>
-      <p class="hint" style="margin-bottom:13px">The two steps above became a file. These are
-        replays of that file, on the same application.</p>
-      ${timed.length ? timed.map(r => `<div class="rep"><span class="dot"></span>
-          <span>Done</span><span class="t">${r.ms != null ? secs(r.ms) : ''}</span></div>`).join('')
-        : '<p class="hint">No replays of it yet — pick it from the list on the left.</p>'}
-      <div class="tally"><b>0 model calls</b> · no API key · the same two steps, in the same
-        order, every single time.</div>
-    </div>
+  const clock = m => `${Math.floor(m/60000)}:${String(Math.floor(m/1000)%60).padStart(2,'0')}`;
+  $('#twice').innerHTML = `<div class="two">
+    <div><h3>ONCE &mdash; AN AI WORKED IT OUT</h3><div class="in">
+      ${rec.actions.map(a => `<div class="turn"><span class="dim">${clock(a.at_ms)}</span>
+        &nbsp; ${esc((a.detail||'').replace(/ captioned .*/,''))}
+        <br><span class="dim">“${esc(a.why)}”</span></div>`).join('')}
+    </div><div class="foot"><b>${rec.turns} turns of a model</b> &middot;
+      ${(rec.took_ms/1000).toFixed(0)}s &middot; costs money every time</div></div>
+    <div><h3>EVERY TIME SINCE &mdash; AN ENGINE REPEATS IT</h3><div class="in">
+      ${ms.map(m => `<div class="turn"><span class="ok">completed</span>
+        <span class="dim" style="float:right">${m} ms</span></div>`).join('')
+        || '<p class="dim">No replays yet.</p>'}
+    </div><div class="foot"><b>0 model calls</b> &middot; no API key &middot;
+      the same steps, in the same order</div></div>
   </div>`;
 }
 
-/* ---------------- catalog ---------------- */
-async function loadCatalog() {
-  const {body} = await j('/capabilities');
-  caps = body.capabilities;
-  const groups = {};
-  for (const c of caps) (groups[appOf(c)] ||= []).push(c);
-  const order = ['live', 'practice'];
-  $('#catalog').innerHTML = order.filter(k => groups[k]).map(app => {
-    const list = groups[app];
-    const [nm, dsc] = APPS[app] || [app, ''];
-    return `<div class="grp"><h4>${esc(nm)}</h4><p>${esc(dsc)}</p>
-      ${list.map(c => { const [t, d] = job(c); return `
-        <button class="item" data-id="${esc(c.id)}">
-          <span class="t"><span class="n">${esc(t)}</span>
-            ${c.irreversible ? '<span class="tag">moves money</span>' : ''}</span>
-          <span class="d">${esc(d)}</span>
-          <span class="id">${esc(c.id)}</span>
-        </button>`}).join('')}</div>`;
-  }).join('');
-  $('#catalog').querySelectorAll('.item').forEach(el =>
-    el.onclick = () => choose(caps.find(c => c.id === el.dataset.id)));
+/* -------------------------------- run a job ------------------------------- */
+function jobs() {
+  const live = caps.filter(c => c.id.startsWith('meridian_'));
+  $('#body').innerHTML = `
+    <h1>Run a job</h1>
+    <table class="grid"><tr><th>Job</th><th>Capability</th><th>Writes</th></tr>
+    ${live.map(c => `<tr class="pick" data-id="${esc(c.id)}">
+      <td class="lbl">${esc(title(c))}</td><td class="dim">${esc(c.id)}</td>
+      <td>${c.irreversible ? '<span class="err">yes</span>' : 'no'}</td></tr>`).join('')}</table>`;
+  $('#body').querySelectorAll('tr.pick').forEach(tr =>
+    tr.onclick = () => form(caps.find(c => c.id === tr.dataset.id)));
 }
 
-/* keyword routing -- deliberately not a model, so you can see why it chose */
-const ROUTES = [[/balance|how much/i,'balance'],[/transfer|move|send|pay/i,'transfer'],
-  [/hold|freeze|restrict/i,'hold'],[/open|new account|new share/i,'open_share'],
-  [/update|change|e-?mail|phone|address/i,'update'],
-  [/look ?up|find|search|who is/i,'inquiry'],[/sign ?in|sign ?on|log ?in/i,'signon']];
-const route = t => { for (const [re,k] of ROUTES) if (re.test(t)) {
-  const h = caps.find(c => c.id.includes(k)); if (h) return h; } return null; };
-
-function guess(cap, text) {
-  const o = {}, m = text.match(/\b\d{6}\b/), sh = text.match(/\b\d{6}-[A-Z0-9]+(?:-\d+)?\b/i),
-        a = text.match(/\$?(\d+\.\d{2})\b/);
-  for (const p of cap.params) {
-    if ((p.name === 'member_id' || p.name === 'value') && m) o[p.name] = m[0];
-    else if (p.name === 'amount' && a) o[p.name] = a[1];
-    else if (p.name.endsWith('share') && sh) o[p.name] = sh[0];
-    else if (p.example) o[p.name] = p.example;
-  }
-  return o;
-}
-
-$('#ask').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  const cap = route(e.target.value);
-  if (!cap) return $('#askhint').innerHTML =
-    'No match. This matcher only knows a handful of words — pick a job from the list instead.';
-  $('#askhint').innerHTML = `Matched <b>${esc(job(cap)[0])}</b> on a keyword.`;
-  choose(cap, guess(cap, e.target.value));
-});
-
-/* ---------------- invoke ---------------- */
-function choose(cap, prefill) {
-  chosen = cap; current = null;
-  document.querySelectorAll('.item').forEach(el => el.setAttribute('aria-current', el.dataset.id === cap.id));
-  document.querySelectorAll('.run').forEach(el => el.setAttribute('aria-current','false'));
-  const pre = prefill || guess(cap, $('#ask').value || '');
-  const [title, desc] = job(cap);
-  $('#main').innerHTML = `
-    <h2>${esc(title)}</h2>
-    <p class="lede">${esc(desc)}</p>
-    <div class="card" style="margin-top:20px">
-      <h3>What it needs to know</h3>
-      <p class="hint">These come from the recording itself — the values a person had to type
-        when this job was first worked out.</p>
-      <div class="fields">
-        ${cap.params.map(p => `<div class="field">
-          <label>${esc(PARAM[p.name] || p.name)}<span class="ty">${p.name} · ${p.type}</span></label>
-          <input data-p="${esc(p.name)}" value="${esc(pre[p.name] || '')}"
-                 type="${p.name === 'password' ? 'password' : 'text'}"
-                 placeholder="${esc(p.description || '')}">
-          ${p.required ? '' : '<div class="why">Optional</div>'}
-        </div>`).join('')}
-      </div>
-      ${cap.irreversible ? `<div class="warnbox"><span class="i">▲</span>
-        <p><strong>This moves real money and cannot be undone.</strong> Ticking the box sends a
-           confirmation tied to these exact values. Change any of them and the confirmation stops
-           being valid, so it cannot be reused for a different amount.</p></div>
-        <label class="confirm"><input type="checkbox" id="confirm">
-          I have checked these values and want to go ahead</label>` : ''}
-      <button class="go" id="go">Run it</button>
-      <span class="hint" id="gonote" style="margin-left:12px"></span>
-    </div>`;
+function form(cap) {
+  chosen = cap;
+  $('#body').innerHTML = `
+    <h1>${esc(title(cap))}</h1>
+    <table class="grid" style="margin-top:10px"><tr><th colspan="2">Details</th></tr>
+    ${cap.params.map(p => `<tr>
+      <td class="lbl" width="150" align="right">${p.required ? '<span class="req">*</span> ' : ''}${esc(FIELD[p.name]||p.name)}</td>
+      <td><input class="fld" data-p="${esc(p.name)}" value="${esc(p.example||'')}"
+           type="${p.name === 'password' ? 'password' : 'text'}"></td></tr>`).join('')}</table>
+    ${cap.irreversible ? `<div class="box" style="margin-top:11px">
+      <span class="err">This writes and cannot be undone.</span> Ticking the box sends a
+      confirmation tied to these exact values.<br><br>
+      <label><input type="checkbox" id="confirm"> Confirm this transaction</label></div>` : ''}
+    <p style="margin-top:13px"><button class="btn" id="go">Run</button>
+      <button class="btn" onclick="go('jobs')">Cancel</button>
+      <span id="note" class="dim"></span></p>`;
   $('#go').onclick = invoke;
 }
 
-async function digest(args) {
-  const buf = await crypto.subtle.digest('SHA-256',
-    new TextEncoder().encode(JSON.stringify(args, Object.keys(args).sort())));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+async function digest(a) {
+  const b = await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify(a, Object.keys(a).sort())));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,'0')).join('');
 }
 
 async function invoke() {
   const args = {};
   document.querySelectorAll('[data-p]').forEach(i => { if (i.value) args[i.dataset.p] = i.value; });
-  const body = {args};
-  if ($('#confirm')?.checked) body.confirm = {capability: chosen.id, args_digest: await digest(args)};
-  const b = $('#go'); b.disabled = true; b.innerHTML = '<span class="spin"></span>Running';
-  $('#gonote').textContent = 'Opening a browser and driving the application…';
-  const {body: res} = await j(`/capabilities/${encodeURIComponent(chosen.id)}/invocations`,
-    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-  b.disabled = false; b.textContent = 'Run it'; $('#gonote').textContent = '';
-  await loadRuns();
+  const body = { args };
+  if ($('#confirm')?.checked) body.confirm = { capability: chosen.id, args_digest: await digest(args) };
+  $('#go').disabled = true; $('#note').textContent = ' — driving the application…';
+  const res = await j(`/capabilities/${encodeURIComponent(chosen.id)}/invocations`,
+    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (res.run_id) show(res.run_id);
+  else { $('#go').disabled = false; $('#note').textContent = ''; }
 }
 
-/* ---------------- runs ---------------- */
-async function loadRuns() {
-  const {body} = await j('/invocations');
-  $('#runs').innerHTML = body.invocations.map(r => {
-    const st = r.outcome || r.status, cap = caps.find(c => c.id === r.capability);
-    return `<button class="run" data-run="${esc(r.run_id)}">
-      <span class="r1"><span class="dot d-${st}"></span>
-        <span class="nm">${esc(cap ? job(cap)[0] : r.capability)}</span></span>
-      <span class="r2">${esc((VERDICT[st] || ['','',''])[1] || st)} ·
-        ${r.run_id.slice(9,15).replace(/(\d\d)(\d\d)(\d\d)/,'$1:$2:$3')}</span></button>`;
-  }).join('') || '<p class="hint">Nothing has run yet.</p>';
-  $('#runs').querySelectorAll('.run').forEach(el => {
-    el.setAttribute('aria-current', el.dataset.run === current);
-    el.onclick = () => show(el.dataset.run);
-  });
+/* ------------------------------ what it wrote ----------------------------- */
+async function artifact() {
+  const live = caps.filter(c => c.id.startsWith('meridian_'));
+  const pick = chosen && chosen.id.startsWith('meridian_') ? chosen : live[0];
+  $('#body').innerHTML = `
+    <h1>What the recording produced</h1>
+    <p><select class="fld" id="which" style="width:auto">
+      ${live.map(c => `<option value="${esc(c.id)}" ${c.id===pick.id?'selected':''}>
+        ${esc(title(c))} — ${esc(c.id)}</option>`).join('')}
+    </select></p>
+    <div id="art"><p class="dim">Loading…</p></div>`;
+  $('#which').onchange = e => paint(e.target.value);
+  paint(pick.id);
+}
+
+async function paint(id) {
+  const a = await j(`/capabilities/${encodeURIComponent(id)}/artifact`);
+  $('#art').innerHTML = `
+    <table class="grid"><tr><th colspan="2">Contract</th></tr>
+      <tr><td class="lbl" width="130">Recorded by</td><td>${esc(a.recorded_by)}</td></tr>
+      <tr><td class="lbl">Takes</td><td>${a.params.map(p=>esc(p.name)+':'+p.type).join(', ')||'—'}</td></tr>
+      <tr><td class="lbl">Gives back</td><td>${a.outputs.map(o=>esc(o.name)+':'+o.type).join(', ')||'—'}</td></tr>
+      <tr><td class="lbl">Approved</td><td>${a.approved?'<span class="ok">yes</span>':'<span class="err">draft</span>'}</td></tr>
+    </table>
+    <h2>Steps</h2>
+    <table class="grid"><tr><th>#</th><th>Action</th><th>How it finds the control</th><th>Risk</th></tr>
+    ${a.steps.map(s => { const t = s.target && s.target.candidates[0];
+      const h = t ? HOW[t.strategy] : null;
+      return `<tr><td class="dim">${s.index}</td>
+        <td>${esc(s.action)}${s.text?' <span class="dim">'+esc(s.text)+'</span>':''}</td>
+        <td>${t ? `<span class="tag${h&&h[1]?'':' w'}">${esc(h?h[0]:t.strategy)}</span>
+             <span class="dim">${esc(t.value).slice(0,46)}</span>` : ''}</td>
+        <td>${s.risk==='irreversible'?'<span class="err">writes</span>':'<span class="dim">'+s.risk+'</span>'}</td>
+      </tr>`; }).join('')}</table>
+    <h2>The file itself</h2>
+    <pre>${esc(JSON.stringify(a, null, 2))}</pre>`;
+}
+
+/* ---------------------------------- runs ---------------------------------- */
+async function runs() {
+  const { invocations } = await j('/invocations');
+  $('#body').innerHTML = `
+    <h1>Runs</h1>
+    <table class="grid"><tr><th>Job</th><th>Result</th><th>Time</th></tr>
+    ${invocations.slice(0,25).map(r => {
+      const st = r.outcome || r.status, v = VERDICT[st] || ['dim', st];
+      const c = caps.find(x => x.id === r.capability);
+      return `<tr class="pick" data-run="${esc(r.run_id)}">
+        <td class="lbl">${esc(c?title(c):r.capability)}</td>
+        <td class="${v[0]}">${v[1]}${r.business_code?' · '+esc(r.business_code):''}</td>
+        <td class="dim">${r.run_id.slice(9,15).replace(/(\d\d)(\d\d)(\d\d)/,'$1:$2:$3')}</td></tr>`;
+    }).join('')}</table>`;
+  $('#body').querySelectorAll('tr.pick').forEach(tr => tr.onclick = () => show(tr.dataset.run));
 }
 
 async function show(id) {
-  current = id; chosen = null;
-  document.querySelectorAll('.item').forEach(el => el.setAttribute('aria-current','false'));
-  document.querySelectorAll('.run').forEach(el => el.setAttribute('aria-current', el.dataset.run === id));
-  const [{body:r},{body:ev}] = await Promise.all([j(`/invocations/${id}`), j(`/invocations/${id}/events`)]);
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.tab === 'runs'));
+  const [r, ev] = await Promise.all([j(`/invocations/${id}`), j(`/invocations/${id}/events`)]);
   const res = r.result || {}, st = res.outcome || (r.error ? 'failure' : r.status);
-  const cap = caps.find(c => c.id === r.capability);
-  const [icon, head, why] = VERDICT[st] || ['●', st, ''];
-  const steps = ev.events.filter(e => e.event === 'step');
+  const v = VERDICT[st] || ['dim', st];
+  const c = caps.find(x => x.id === r.capability);
   const outs = res.typed_outputs || res.outputs || {};
-
-  $('#main').innerHTML = `
-    <h2>${esc(cap ? job(cap)[0] : r.capability || '—')}</h2>
-    <p class="lede">${esc(cap ? job(cap)[1] : '')}</p>
-    <p class="hint mono" style="margin-top:6px;display:none" id="runid">${esc(id)}</p>
-
-    <div class="card v-${st}" style="margin-top:20px">
-      <div class="verdict"><div class="vicon">${icon}</div>
-        <div><h4>${esc(head)}</h4>
-          <p>${esc(st === 'business_outcome' && res.message ? res.message : why)}</p>
-          ${st !== 'business_outcome' && res.message
-            ? `<p class="hint tech" style="margin-top:5px">${esc(res.message)}</p>` : ''}
-        </div></div>
-      ${r.error ? `<div class="banner">${esc(r.error)}</div>` : ''}
-    </div>
-
-    ${Object.keys(outs).length ? `<div class="card"><h3>What it found</h3>
-      <p class="hint">Read straight off the application’s screens.</p>
-      <div class="outs">${Object.entries(outs).map(([k,v]) =>
-        `<div class="out"><div class="k">${esc(OUT[k] || k.replace(/_/g,' '))}</div>
-         <div class="v">${esc(v)}</div></div>`).join('')}</div></div>` : ''}
-
-    ${(res.degraded || []).length ? `<div class="card"><h3>Worth a look</h3>
-      <p class="hint">It finished, but some controls were not where the recording expected. That
-        usually means the application has changed, and this job is close to breaking.</p>
-      <div style="margin-top:12px">${res.degraded.map(d =>
-        `<p class="hint" style="margin-bottom:5px">Step ${d.step}: expected to find it
-         ${esc((HOW[d.primary]||[d.primary])[0])}, actually found it
-         <b>${esc((HOW[d.won_by]||[d.won_by])[0])}</b>.</p>`).join('')}</div></div>` : ''}
-
-    ${(res.recovered || []).length ? `<div class="card"><h3>Recovered from</h3>
-      <p class="hint">Things that went wrong and were handled without stopping.</p>
-      <div style="margin-top:10px">${res.recovered.map(l =>
-        `<p class="hint" style="margin-bottom:5px">${esc(l)}</p>`).join('')}</div></div>` : ''}
-
-    <div class="card"><h3>Exactly what it did</h3>
-      <p class="hint">In order, on the real application. No AI was involved in any of these steps
-        — they came from the recording.</p>
-      ${steps.length ? `<div class="steps" style="margin-top:14px">${steps.map(s => {
-        const h = s.resolved_by ? HOW[s.resolved_by.strategy] : null;
-        return `<div class="st ${s.checkpoint_ok === true ? 'ok' : s.checkpoint_ok === false ? 'no' : ''}">
-          <div class="say">${saidStep(s)}</div>
-          <div class="meta">
-            ${h ? `<span class="how${h[1] ? '' : ' weak'}">found ${esc(h[0])}</span>` : ''}
-            <span class="tech">${s.duration_ms != null ? s.duration_ms + ' ms' : ''}
-              ${s.resolved_by ? '· ' + esc(s.resolved_by.strategy) : ''}</span>
-          </div>
-          ${s.error ? `<div class="err">${esc(s.error)}</div>` : ''}
-        </div>`}).join('')}</div>` : '<p class="hint">No steps were recorded.</p>'}
-    </div>`;
-  if ($('#tech').checked) $('#runid').style.display = 'block';
+  const steps = ev.events.filter(e => e.event === 'step');
+  $('#body').innerHTML = `
+    <h1>${esc(c ? title(c) : r.capability || '')}</h1>
+    <div class="box" style="margin-top:8px"><span class="${v[0]}">${v[1]}</span>
+      ${res.business_code ? ' — ' + esc(res.business_code) : ''}
+      ${res.message ? '<br><span class="dim">'+esc(res.message)+'</span>' : ''}
+      ${r.error ? '<br><span class="err">'+esc(r.error)+'</span>' : ''}</div>
+    ${Object.keys(outs).length ? `<h2>Result</h2><table class="grid">
+      ${Object.entries(outs).map(([k,val]) => `<tr><td class="lbl" width="150">${esc(OUT[k]||k)}</td>
+      <td>${esc(val)}</td></tr>`).join('')}</table>` : ''}
+    ${(res.degraded||[]).length ? `<h2>Needs attention</h2>
+      <table class="grid">
+      ${res.degraded.map(d => `<tr><td width="70">Step ${d.step}</td><td>expected
+        ${esc((HOW[d.primary]||[d.primary])[0])}, found
+        <span class="warn">${esc((HOW[d.won_by]||[d.won_by])[0])}</span></td></tr>`).join('')}
+      </table>` : ''}
+    <h2>What it did</h2>
+    <table class="grid">${steps.map(s => { const h = s.resolved_by ? HOW[s.resolved_by.strategy] : null;
+      return `<tr><td width="26" class="dim">${s.index}</td><td>${esc(said(s))}</td>
+        <td width="165">${h?`<span class="tag${h[1]?'':' w'}">${esc(h[0])}</span>`:''}</td>
+        <td width="58" class="dim" align="right">${s.duration_ms!=null?s.duration_ms+' ms':''}</td></tr>`;
+    }).join('') || '<tr><td class="dim">No steps recorded.</td></tr>'}</table>
+    <p style="margin-top:13px"><button class="btn" onclick="go('runs')">Back</button></p>`;
 }
 
-/* ---------------- chrome wiring ---------------- */
-$('#tech').onchange = e => {
-  document.body.classList.toggle('tech', e.target.checked);
-  const el = $('#runid'); if (el) el.style.display = e.target.checked ? 'block' : 'none';
-};
-$('#explain').onclick = explain;
+function said(s) {
+  const m = s.resolved_by && /^\w+ "(.*)"$/.exec(s.resolved_by.value || '');
+  const named = m ? '“' + m[1] + '”' : 'a control';
+  const p = (s.text || '').replace(/^\{(.+)\}$/, (_, n) => FIELD[n] || n);
+  return s.action === 'navigate' ? `Opened ${(s.url||'').replace(/^https?:\/\/[^/]+/,'') || 'the application'}`
+    : s.action === 'type' ? `Entered ${p}` : s.action === 'select' ? `Chose ${p}`
+    : s.action === 'click' ? `Clicked ${named}`
+    : s.action === 'read' ? `Read ${s.extra && s.extra.read ? '“'+s.extra.read+'”' : 'a value'}`
+    : 'Waited';
+}
 
-explain();
-loadCatalog().then(loadRuns);
-setInterval(() => { if (!chosen) loadRuns(); }, 5000);
+j('/capabilities').then(d => {
+  caps = d.capabilities;
+  $('#conn').textContent = `${caps.length} capabilities`;
+  about();
+});
 </script>

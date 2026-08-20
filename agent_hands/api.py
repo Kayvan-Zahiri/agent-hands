@@ -495,10 +495,16 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/capabilities":
             return self._send(200, inv.catalog.listing())
         if path.startswith("/capabilities/"):
-            name = path.split("/")[2]
-            cap = inv.catalog.capabilities.get(name)
+            parts = path.split("/")
+            cap = inv.catalog.capabilities.get(parts[2])
             if cap is None:
-                return self._send(404, {"error": f"no capability named {name!r}"})
+                return self._send(404, {"error": f"no capability named {parts[2]!r}"})
+            if len(parts) == 4 and parts[3] == "artifact":
+                # The whole file, steps and targets included. This is the
+                # reviewer's view, not the agent's: the catalog hides the flow on
+                # purpose so a caller cannot depend on it, but a person deciding
+                # whether to approve a recording has to read every line of it.
+                return self._send(200, cap.to_json())
             return self._send(200, _projection(cap))
         if path == "/recordings":
             return self._send(200, {"recordings": _recordings(inv)})
