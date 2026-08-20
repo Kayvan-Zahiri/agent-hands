@@ -63,6 +63,13 @@ _FIELD_ROLES = frozenset({
     "spinbutton", "slider",
 })
 
+# Roles that hold a value worth reading back, as opposed to something to act
+# on. A read target is not interactive, so without this it would never be
+# offered to the model and read_value could never be called.
+_VALUE = frozenset({
+    "cell", "gridcell", "rowheader", "columnheader", "heading", "paragraph",
+})
+
 # Roles Playwright's role engine accepts in get_by_role. The snapshot can emit
 # other tokens ("text", "iframe"), and asking for those raises instead of
 # returning nothing, so they are filtered out first.
@@ -137,6 +144,27 @@ class Observation:
 
     def interactive(self) -> Iterator[Node]:
         return (n for n in self.nodes if n.interactive)
+
+    def addressable(self) -> list[Node]:
+        """Everything the model can refer to by number: act on, or read from.
+
+        One list, so a control number means the same thing to every caller.
+        A value node earns a slot only if it is a leaf, which is a check on
+        `depth`: the node after it in this flattened tree is not its child.
+        Without that, an outer table cell would be offered alongside the cells
+        inside it, and reading it would return every value run together.
+        """
+        out = []
+        for i, n in enumerate(self.nodes):
+            if n.interactive:
+                out.append(n)
+                continue
+            if n.role not in _VALUE or not n.name:
+                continue
+            deeper = i + 1 < len(self.nodes) and self.nodes[i + 1].depth > n.depth
+            if not deeper:
+                out.append(n)
+        return out
 
     def render(self) -> str:
         """The compact human view. This is what goes in an evidence bundle."""

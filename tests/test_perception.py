@@ -82,6 +82,20 @@ def _open(browser: Browser, url: str) -> Page:
     return page
 
 
+def _detail(page: Page) -> Observation:
+    """Walk the flow to the detail screen, rather than loading its URL.
+
+    Loading it directly gives a page with no frameset, so every node lands in
+    frame "main" and a target derived there resolves against nothing during a
+    real replay.
+    """
+    frame = [f for f in page.frames if f.name == "content"][0]
+    frame.get_by_role("textbox").first.fill("12345")
+    frame.get_by_role("link", name="Search", exact=True).click()
+    page.wait_for_timeout(600)
+    return observe(page)
+
+
 def _search_field(obs: Observation) -> Node:
     """The one control on the search form that has no accessible name."""
     fields = [n for n in obs.find(role="textbox") if not n.name]
@@ -135,6 +149,40 @@ class PerceptionTest(unittest.TestCase):
         field = _search_field(observe(self.page))
         self.assertEqual("", field.name)
         self.assertEqual("content", field.frame)
+
+    # -- addressable nodes --------------------------------------------------
+
+    def test_a_value_cell_is_offered_alongside_the_controls(self) -> None:
+        # read_value takes a control number, so a value the model cannot number
+        # is a value it can never return. Interactive-only numbering made every
+        # read unreachable on a screen that is pure output, which the detail
+        # screen is.
+        obs = _detail(self.page)
+        names = [n.name for n in obs.addressable()]
+        self.assertIn("4812.55", names)
+        self.assertIn("1203.10", names)
+        # The nav frame keeps its links, so scope this to the screen itself.
+        self.assertEqual([], [n for n in obs.interactive() if n.frame == "content"],
+                         "detail screen gained a control")
+
+    def test_a_cell_wrapping_other_cells_is_not_offered(self) -> None:
+        # The detail table sits inside an outer cell whose accessible name is
+        # every value run together. Offering it means the model can pick a
+        # target that reads "Savings Balance 4812.55 Checking Balance 1203.10"
+        # and call that an answer.
+        obs = _detail(self.page)
+        for n in obs.addressable():
+            self.assertNotIn("Savings Balance 4812.55", n.name)
+
+    def test_the_model_and_the_resolver_number_alike(self) -> None:
+        # _render shows the list and _node_at reads a number back out of it.
+        # They were two hand-kept copies of one filter; if they ever disagree,
+        # every recorded control number points somewhere else.
+        from agent_hands.discover import _node_at, _render
+        obs = _detail(self.page)
+        shown = [ln for ln in _render(obs).splitlines() if ln.strip().startswith("6:")]
+        self.assertTrue(shown, "control 6 was not offered")
+        self.assertIn(repr(_node_at(obs, 6).name), shown[0])
 
     # -- targeting ----------------------------------------------------------
 

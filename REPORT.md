@@ -293,6 +293,16 @@ comment there now says so.
 
 Deliberately not built, in rough order of how much they would matter:
 
+- **A read has no label-relative target.** Values are now numbered and can be
+  read back, but the strategies that address them are ranked for controls. The
+  top one is `role_name`, and for a value cell the name *is* the recorded answer,
+  so it can only match the parameter it was recorded against. Every read against
+  a different parameter therefore degrades to `nth_of_role` and succeeds on
+  position alone. That works, and the run log says so, but the durable target is
+  the one this does not have: the cell to the right of the cell captioned
+  "Savings Balance". `LABELLED_FIELD` is exactly that idea and applies only to
+  form fields. Extending it to value cells is the next thing worth doing here.
+
 - **Identity and audit.** The policy layer gates *what* runs, not *who* asked.
   Per-caller scoping and an attributable approvals trail belong to whatever calls
   this. Named rather than half-built.

@@ -403,7 +403,7 @@ def _render(obs: Observation, limit: int = 45) -> str:
         lines.append("  (no text)")
 
     lines += ["", "CONTROLS:"]
-    numbered = [n for n in obs.nodes if n.interactive]
+    numbered = obs.addressable()
     for i, node in enumerate(numbered[:limit]):
         name = node.name or "(no accessible name)"
         lines.append(f"  {i}: {node.role} {name!r}  [frame {node.frame}]")
@@ -415,8 +415,13 @@ def _render(obs: Observation, limit: int = 45) -> str:
 
 
 def _node_at(obs: Observation, index: Any) -> Any:
-    """Resolve a control number against the same list the model was shown."""
-    numbered = [n for n in obs.nodes if n.interactive]
+    """Resolve a control number against the same list the model was shown.
+
+    Both callers go through Observation.addressable() so that stays true. When
+    this was built by hand in two places, a change to one silently pointed every
+    recorded control number at a different element.
+    """
+    numbered = obs.addressable()
     if not isinstance(index, int) or index < 0 or index >= len(numbered):
         return None
     return numbered[index]
