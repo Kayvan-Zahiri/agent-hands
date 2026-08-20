@@ -1,0 +1,319 @@
+{
+  "schema_version": "1.0",
+  "artifact_version": 1,
+  "name": "meridian_signon",
+  "description": "Sign on to MERIDIAN CORE and land on the main menu.",
+  "app_id": "meridian-core",
+  "app_variant": null,
+  "entry_url": "https://web-sample.interface-hiring.com/signon",
+  "approved": true,
+  "recorded_by": "hand-authored trajectory; targets derived from the live app by perception.derive_targets",
+  "recorded_at": "",
+  "params": [
+    {
+      "name": "operator",
+      "type": "string",
+      "required": true,
+      "description": "operator id",
+      "example": "teller1"
+    },
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "description": "operator password",
+      "example": null
+    },
+    {
+      "name": "branch",
+      "type": "string",
+      "required": true,
+      "description": "branch code",
+      "example": "MAIN-001"
+    }
+  ],
+  "outputs": [],
+  "business_rules": [
+    {
+      "code": "member_not_found",
+      "when_text": "RECORD NOT FOUND",
+      "message": "no member exists with that identifier",
+      "terminal": true
+    },
+    {
+      "code": "no_search_match",
+      "when_text": "No member records matched",
+      "message": "the search returned nothing",
+      "terminal": true
+    },
+    {
+      "code": "insufficient_funds",
+      "when_text": "INSUFFICIENT FUNDS",
+      "message": "the from-share does not hold that amount",
+      "terminal": true
+    },
+    {
+      "code": "transaction_rejected",
+      "when_text": "TRANSACTION REJECTED",
+      "message": "the application refused the transaction as entered",
+      "terminal": true
+    },
+    {
+      "code": "supervisor_required",
+      "when_text": "SUPERVISOR OVERRIDE REQUIRED",
+      "message": "this function needs a supervisor to sign on",
+      "terminal": false
+    }
+  ],
+  "steps": [
+    {
+      "index": 0,
+      "action": "navigate",
+      "target": null,
+      "text": null,
+      "url": "https://web-sample.interface-hiring.com/signon",
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_present",
+        "value": "NOT SIGNED ON"
+      },
+      "extracts": null,
+      "note": ""
+    },
+    {
+      "index": 1,
+      "action": "type",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "labelled_field",
+            "value": "Operator ID:",
+            "frame": "main",
+            "durability": 0.85,
+            "note": "caption cell left of the field in the layout table"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "textbox[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 2 textbox controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(2) > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "role_name",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "point",
+            "value": "450,104",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": "{operator}",
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": ""
+    },
+    {
+      "index": 2,
+      "action": "type",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "labelled_field",
+            "value": "Password:",
+            "frame": "main",
+            "durability": 0.85,
+            "note": "caption cell left of the field in the layout table"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "textbox[1]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 1 of 2 textbox controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(2) > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > input",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "role_name",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "point",
+            "value": "450,128",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": "{password}",
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": ""
+    },
+    {
+      "index": 3,
+      "action": "select",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "labelled_field",
+            "value": "Branch:",
+            "frame": "main",
+            "durability": 0.85,
+            "note": "caption cell left of the field in the layout table"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "combobox[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 1 combobox controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(2) > td > form > table > tbody > tr:nth-of-type(3) > td:nth-of-type(2) > select",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "role_name",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "control has no accessible name"
+          },
+          {
+            "strategy": "point",
+            "value": "453,152",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": "{branch}",
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": null,
+      "extracts": null,
+      "note": ""
+    },
+    {
+      "index": 4,
+      "action": "click",
+      "target": {
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "button \"Sign On\"",
+            "frame": null,
+            "durability": 0.95,
+            "note": "unique by role and name across the whole page"
+          },
+          {
+            "strategy": "role_name_in_region",
+            "value": "button \"Sign On\"",
+            "frame": "main",
+            "durability": 0.9,
+            "note": "role and name, scoped to frame 'main'"
+          },
+          {
+            "strategy": "nth_of_role",
+            "value": "button[0]",
+            "frame": "main",
+            "durability": 0.4,
+            "note": "index 0 of 1 button controls in the frame; breaks if the page reorders"
+          },
+          {
+            "strategy": "dom_path",
+            "value": "body > table > tbody > tr:nth-of-type(2) > td > form > table > tbody > tr:nth-of-type(4) > td:nth-of-type(2) > input",
+            "frame": "main",
+            "durability": 0.2,
+            "note": "structural path; any layout change invalidates it"
+          }
+        ],
+        "rejected": [
+          {
+            "strategy": "labelled_field",
+            "value": "",
+            "frame": null,
+            "durability": 0.0,
+            "note": "role 'button' is not a form field"
+          },
+          {
+            "strategy": "point",
+            "value": "406,190",
+            "frame": "main",
+            "durability": 0.05,
+            "note": "viewport coordinates; not resolvable, recorded for human review only"
+          }
+        ]
+      },
+      "text": null,
+      "url": null,
+      "risk": "reversible",
+      "checkpoint": {
+        "kind": "text_present",
+        "value": "MAIN MENU"
+      },
+      "extracts": null,
+      "note": ""
+    }
+  ]
+}
