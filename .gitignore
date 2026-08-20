@@ -8,3 +8,8 @@ __pycache__/
 CLAUDE.md
 COMMANDS.md
 SUMMARY.md
+
+# Editor-local, same reason as the notes above
+.vscode/
+TESTS.md
+ASK.md
