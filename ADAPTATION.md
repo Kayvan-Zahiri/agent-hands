@@ -164,7 +164,10 @@ serves both and there is no flag to forget.
 including callers that are not the console. It only asks to be asked -- it
 cannot approve anything or widen what a run may do, and what it displaces is
 giving up. The default stays the unattended answer, and an unanswered handoff
-aborts after three minutes, which is that same ending by a slower route.
+aborts after three minutes, which is that same ending by a slower route. So
+does closing the browser window, which the run notices in about a second --
+somebody who closes it has stopped watching, and often did the step by hand
+first, so there is no session left to hand back either way.
 
 Building it found the escalation path's own dead spot. `verify_resume` refuses
 without a confirmed checkpoint, which is right when a run broke before
@@ -280,7 +283,7 @@ PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 126 unit, 31 end-to-end against a real browser, nothing mocked. The rule
+Suites: 130 unit, 31 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

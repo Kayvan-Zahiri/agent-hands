@@ -51,7 +51,13 @@ single window, or your audience will not see it.
 **Operator** is the handoff. The run drives to the step that moves money and
 stops, because nothing authorized the write. The browser stays on the
 confirmation screen, and **Resume** posts it or **Abort** walks away with
-nothing written. Nobody answering within three minutes aborts on its own.
+nothing written.
+
+Answer it in the console. Clicking in the browser window does not reach the
+run, and doing the step by hand means resume is refused -- otherwise the engine
+would do it a second time. Three ways it ends without you: closing the browser
+window ends it in about a second, nobody answering ends it after three minutes,
+and either way nothing is written. The run says which one it was.
 
 `--operator` on the server does the same for *every* run, including callers
 that are not the console. The tab does not need it.
@@ -114,7 +120,7 @@ approved artifact and there is not one yet.
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 122
+.venv/bin/python -m pytest tests -q        # 130
 .venv/bin/python tests/test_replay.py      # 31, real browser
 ```
 
@@ -152,5 +158,5 @@ with `curl -s -o /dev/null -w "%{http_code}" localhost:8080/`.
 **Everything against the target fails.** Check it is up:
 `curl -s -o /dev/null -w "%{http_code}" https://web-sample.interface-hiring.com/signon`
 
-**`no tests ran`, or a count below 122 / 31.** You are not in the repo root.
+**`no tests ran`, or a count below 130 / 31.** You are not in the repo root.
 pytest exits `4` and looks almost green.
