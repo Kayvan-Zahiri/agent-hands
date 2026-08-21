@@ -51,7 +51,7 @@ pkill -f "agent_hands.api"
 | **Run with the AI** | a model works the job out from scratch, 20–45s (needs a key, see §5) |
 | **Artifact** | the file a recording produced, including the raw JSON |
 | **Operator** | the same job with nobody authorizing the write: it stops and asks |
-| **Service Desk** | the end-user surface: pick a task, fill in a form, read the answer |
+| **Service Desk** | the end-user surface: pick a task, fill out a form, read the answer |
 | **Ask** | the same jobs, asked for in a sentence. Click a suggestion or type one |
 | **Runs** | every run, with its steps and what it read back |
 
@@ -148,7 +148,7 @@ approved artifact and there is not one yet.
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 165
+.venv/bin/python -m pytest tests -q        # 168
 .venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
@@ -186,5 +186,5 @@ with `curl -s -o /dev/null -w "%{http_code}" localhost:8080/`.
 **Everything against the target fails.** Check it is up:
 `curl -s -o /dev/null -w "%{http_code}" https://web-sample.interface-hiring.com/signon`
 
-**`no tests ran`, or a count below 165 / 34.** You are not in the repo root.
+**`no tests ran`, or a count below 168 / 34.** You are not in the repo root.
 pytest exits `4` and looks almost green.

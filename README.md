@@ -40,11 +40,11 @@ Keeping these apart is most of the value.
 | ending | what it means |
 |---|---|
 | **it worked** | here is what it read back — a balance, a confirmation number |
-| **the application said no** | *"no such member"*, *"you need a supervisor for that"*. An **answer**, not a breakage |
+| **the application said no** | *"no such member,"* *"you need a supervisor for that."* An **answer**, not a breakage |
 | **it broke** | the screen was not what the recipe expected. Nothing was changed, and it says which step and what it saw instead |
 
 The middle one is what most automation gets wrong. A system that reports "no
-such member" as a crash gets somebody paged at 3am because a customer mistyped
+such member" as a crash gets somebody paged at 3 a.m. because a customer mistyped
 their account number.
 
 ## The words this project uses
@@ -54,7 +54,7 @@ in one place.
 
 | word | plain English |
 |---|---|
-| **capability** | one job it knows how to do, like "check a balance". The console calls these **Jobs**; the files live in `capabilities/` |
+| **capability** | one job it knows how to do, like "check a balance." The console calls these **Jobs**; the files live in `capabilities/` |
 | **artifact** | the file holding one capability's recipe. Also called a **recording** |
 | **record** | the single AI-driven run that writes a recipe |
 | **replay** | following a recipe, with no AI involved. This is the production path |
@@ -102,7 +102,7 @@ The tests, which also need no credentials:
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 165
+.venv/bin/python -m pytest tests -q        # 168
 .venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
@@ -385,12 +385,12 @@ failures are a disagreement between the two.
 
 ## Tests
 
-199 in total, all against the real fixture with a real browser. No mocked pages:
+202 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 155 unit tests: perception (starts its own fixture), policy, escalation, recorder, chat
+# 158 unit tests: perception (starts its own fixture), policy, escalation, recorder, chat
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation tests.test_chat
 
 # 10 more, covering the CLI
@@ -401,14 +401,14 @@ PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
 `tests/test_replay.py` collects nothing under pytest. Those 34 cases run only
-when the file is called directly, as above. `pytest tests -q` reports 165,
-which is the same 155 and 10 counted together.
+when the file is called directly, as above. `pytest tests -q` reports 168,
+which is the same 158 and 10 counted together.
 
 | suite | covers |
 |---|---|
 | `test_perception.py` | frame crossing, the unnamed field, caption-not-id targeting, ambiguity demotion, `POINT` never offered, the second tenant |
 | `test_policy_escalation.py` | surface/action/risk gates, redaction, ownership transitions, resume re-verification |
-| `test_replay.py` | the three outcomes, recovery, degradation vs staleness, policy refusals |
+| `test_replay.py` | the three outcomes, recovery, degradation vs. staleness, policy refusals |
 
 The one to read is `test_replay.py`. It asserts *which* of the three outcomes
 came back, not just that the run completed, and every real bug in this project

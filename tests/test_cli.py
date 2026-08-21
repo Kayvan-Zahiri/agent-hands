@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
 
 class OperatorConsoleTest(unittest.TestCase):
-    """The console reads two lines. Cancelling at the second must not resume.
+    """The console reads two lines. Canceling at the second must not resume.
 
     An earlier fix tried to keep a choice that had already been typed when the
     note prompt hit EOF. That turned Ctrl-C into "resume", which is backwards:

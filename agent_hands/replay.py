@@ -161,7 +161,7 @@ def _hold(frame: Any, checkpoint: Checkpoint, timeout_ms: int) -> None:
     """Wait for the checkpoint, raising PlaywrightTimeout if it never holds.
 
     Every branch is a Playwright wait rather than a read-and-compare, so the
-    assertion is also the synchronisation. That is what removes the settle sleep
+    assertion is also the synchronization. That is what removes the settle sleep
     this kind of engine otherwise grows after every click.
     """
     kind, value = checkpoint.kind, checkpoint.value
@@ -194,7 +194,7 @@ def _exactly(value: str) -> "re.Pattern[str]":
     this engine exists to make impossible.
 
     A regex restores case sensitivity without giving up the wait, so the
-    assertion is still the synchronisation. It also lines replay up with
+    assertion is still the synchronization. It also lines replay up with
     `default_verify`, which has always compared with a plain `in` -- the two
     halves of the same checkpoint disagreeing was the deeper bug.
 
@@ -881,7 +881,7 @@ class Replay:
         return True
 
     def _dismiss(self, frame: Any, condition: Condition, step: Step) -> str | None:
-        """Click an interstitial's acknowledgement and confirm it actually went.
+        """Click an interstitial's acknowledgment and confirm it actually went.
 
         The confirmation is the whole point. A dismissal that is assumed rather
         than checked is how a run records a recovery it did not make, carries on

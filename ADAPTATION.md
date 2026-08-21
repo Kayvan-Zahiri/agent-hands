@@ -214,7 +214,7 @@ a person is watching. `--allow-writes` is that person saying yes for one session
 **The recorder wrote the password into the artifact.** Signing on types a
 credential, and the recorder's job is to write down what happened. An artifact is
 read in a diff and committed, so that is a credential in version control. Two
-routes, and the second is the one that catches you out: name the password in the
+routes, and the second is the one that trips you up: name the password in the
 goal and it becomes a parameter on its own, carrying the literal forward as a
 helpful `example`. Both are closed and the description is scrubbed too.
 
@@ -327,7 +327,7 @@ of somebody's accounts to look at would be a guess with money attached.
 
 - **Reads have no label-relative target in the engine.** The failure above is
   this, and it is the first thing I would build. The idea already exists for form
-  fields as `LABELLED_FIELD`; a value cell needs the same thing anchored to the
+  fields as `LABELED_FIELD`; a value cell needs the same thing anchored to the
   row it is in. The artifacts carry an xpath as a workaround, which works and
   does not generalize.
 - **The confirmation gate is a deliberate-action gate, not an authorization
@@ -359,7 +359,7 @@ PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 165 unit, 34 end-to-end against a real browser, nothing mocked. The rule
+Suites: 168 unit, 34 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

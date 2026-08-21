@@ -66,9 +66,14 @@ click  control=4 via role_name        why='Submit the member search'
 ```
 
 The model chose control *3*, not a selector. It was shown a numbered list of
-controls from the accessibility tree and picked one; `labelled_field 'Member ID'`
+controls from the accessibility tree and picked one; the way of finding it again
 was derived by the recorder, not written by the model. That split is deliberate,
 and the evidence is where you can check it held.
+
+The transcript above spells that strategy with two l's because that is what the
+run wrote at the time. Evidence is a record of what happened, so it is never
+edited; the code spells it `labeled_field` now and still reads the old spelling
+back.
 
 The goal reads `Look up member [REDACTED:ACCOUNT] ...` because the redactor
 treats a five-digit identifier as an account number. That is over-redaction of a
@@ -81,7 +86,7 @@ that cannot be attached to a ticket.
 | run | outcome | what it shows |
 |---|---|---|
 | `...233224Z_member-lookup_5dfaee` | success | the happy path |
-| `...234201Z_member-lookup_21da9b` | business_outcome `member_not_found` | the app answered "no". not a failure |
+| `...234201Z_member-lookup_21da9b` | business_outcome `member_not_found` | the app answered "no." not a failure |
 | `...234229Z_member-lookup_86898f` | business_outcome `invalid_identifier` | input rejected by the app's own validation |
 | `...234652Z_member-lookup_403428` | success, **degraded** | the same artifact against a second tenant. the recorded primary strategy missed and a 0.4-durability fallback caught it. `result.json` says success; only `run.jsonl` shows the slide |
 | `...234414Z_member-lookup-stale_542a17` | failure | a recording that no longer matches the app. all four strategies missed; screenshot, accessibility snapshot and intervention packet captured |

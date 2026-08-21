@@ -25,7 +25,7 @@ cli.py          the buttons        record / show / approve / replay
 ## The line between the halves
 
 The split is between `recorder.py` and `replay.py`. Above it a model is
-involved; below it, never. That is the design, not an optimisation, and it is
+involved; below it, never. That is the design, not an optimization, and it is
 why `record` needs `ANTHROPIC_API_KEY` and `replay` does not.
 
 It is also checkable rather than asserted:

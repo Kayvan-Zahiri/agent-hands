@@ -41,8 +41,8 @@ member_id=30021 (never seen)     success
 ```
 
 The model picked *control 3* from a numbered list of what was on screen. The way
-that control is described in the artifact, "the field captioned Member ID", was
-worked out by the recorder afterwards, not by the model. Both halves are needed.
+that control is described in the artifact, "the field captioned Member ID," was
+worked out by the recorder afterward, not by the model. Both halves are needed.
 The model knows which control it wants. The recorder knows how to find that
 control again next month.
 
@@ -78,7 +78,7 @@ Verbatim from the committed artifact, for the search field:
 
 ```
 1. type [reversible] {member_id}
-      -> labelled_field       'Member ID'   (0.85)  caption cell left of the field
+      -> labeled_field       'Member ID'   (0.85)  caption cell left of the field
          nth_of_role          'textbox[0]'  (0.40)  index 0 of 1; breaks if the page reorders
          dom_path             'body > table:nth-of-type(2) > ...' (0.20)
        x role_name            ''            control has no accessible name
@@ -146,12 +146,12 @@ checking are the same thing. A slow page is treated as something to wait out: a
 short budget first, then one longer try, and only then a verdict.
 
 Every kind of retry is counted and named. Three attempts per step, one session
-re-entry, three whole-flow re-entries. There is no generic "just try again".
+re-entry, three whole-flow re-entries. There is no generic "just try again."
 Each one is written to the log, because a system that quietly recovers is a
 system that can limp for months before anyone notices.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 34/34 passing, alongside 165 unit tests
+fixture and asserts the outcome of each, 34/34 passing, alongside 168 unit tests
 covering perception, policy, escalation and the CLI:
 
 | case | outcome | note |
@@ -172,14 +172,14 @@ covering perception, policy, escalation and the CLI:
 | every strategy missed | failure | `unresolved control`, evidence captured |
 | host not allowlisted | failure | refused before the browser opened |
 | unapproved draft | failure | refused |
-| read-only lane vs a write step | failure | refused |
+| read-only lane vs. a write step | failure | refused |
 | mistyped parameter | raises | caller's bug, not a replay outcome |
 
 
 ## Heterogeneity & multi-tenant
 
 Same vendor product, two institutions: different brand, different field caption
-("Member ID" vs "Account Number"), different route.
+("Member ID" vs. "Account Number"), different route.
 
 A recording made at bank A, replayed against bank B, **worked**. How it worked is
 the whole argument for keeping a ranked list instead of one selector:
@@ -187,7 +187,7 @@ the whole argument for keeping a ranked list instead of one selector:
 ```
 step 1 type
    won    : nth_of_role 'textbox[0]' (conf 0.4)
-   failed : labelled_field 'Member ID' -- matched nothing
+   failed : labeled_field 'Member ID' -- matched nothing
 ```
 
 The best way of finding the field missed, because bank B captions it "Account
@@ -378,7 +378,7 @@ Deliberately not built, in rough order of how much they would matter:
 - **Discovery explores one path, and never checks its own work.** The live run
   records the successful route and stops. It does not probe the not-found or
   validation branches, so the business rules that separate an answer from a fault
-  are authored by the reviewer afterwards. `evidence/README.md` shows the cost:
+  are authored by the reviewer afterward. `evidence/README.md` shows the cost:
   the recorded artifact called an unknown member a failure until two rules were
   added by hand. Nor does it replay the draft once before handing it over, so
   "the goal was met" is the model's own word for it. Trying one bad input during
@@ -389,12 +389,12 @@ Deliberately not built, in rough order of how much they would matter:
 ### On the fixture
 
 The fake bank app is a test target, not part of what is being delivered. Its
-failures are switched on with a query parameter rather than happening on their
+failures are turned on with a query parameter rather than happening on their
 own. That makes them repeatable, which is what let every branch be tested. It
 also means the rules for recognizing trouble are matched against text I wrote
 myself.
 
 On a real application those rules would be written per bank, and they would be
-the fiddliest part of setting up a new one. That is exactly why they sit in a
+the trickiest part of setting up a new one. That is exactly why they sit in a
 plain table in `replay.py` rather than being spread through the code. They are
 data for someone to edit, not logic for someone to rewrite.

@@ -607,7 +607,7 @@ def main() -> int:
             draft = copy.deepcopy(cap); draft.approved = False
             suite.check(Case("unapproved draft", Outcome.FAILURE),
                         run(page, draft, {"member_id": "12345"}))
-            suite.check(Case("read-only lane vs a write", Outcome.FAILURE),
+            suite.check(Case("read-only lane vs. a write", Outcome.FAILURE),
                         run(page, cap, {"member_id": "12345"}, policy.read_only()))
 
             # A malformed call is the caller's bug, not a replay outcome, so it

@@ -493,7 +493,7 @@ def _recordings(inv: "Invoker", limit: int = 20) -> list[dict[str, Any]]:
 
     These are the other half of the story and the API had no way to show them.
     A discovery run leaves no `result.json` -- it produces an artifact, not an
-    outcome -- so `_history` skips it entirely. It is recognised here by the
+    outcome -- so `_history` skips it entirely. It is recognized here by the
     events only the discovery loop writes.
 
     What comes back is the model's own account of itself: which control it chose

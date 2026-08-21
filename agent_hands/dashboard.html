@@ -898,7 +898,7 @@ function deskWait(runId, pending) {
     </div>`;
   const answer = d => {
     $('#desk').innerHTML = `<h2>${esc(title(deskCap))}</h2>
-      <div class="banner wait"><b>${d === 'resume' ? 'Approved. Finishing…' : 'Cancelling…'}</b></div>
+      <div class="banner wait"><b>${d === 'resume' ? 'Approved. Finishing…' : 'Canceling…'}</b></div>
       <div class="live" id="d-log"></div>`;
     j(`/invocations/${runId}/decision`, { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -943,7 +943,7 @@ function deskDone(run) {
 function deskFail(runId, detail, signon) {
   const closed = /closed|nobody answered|declined/i.test(detail || '');
   const head = signon ? 'Those sign-on details were not accepted.'
-    : closed ? 'The request was cancelled before anything changed.'
+    : closed ? 'The request was canceled before anything changed.'
     : 'Something went wrong partway through.';
   $('#desk').innerHTML = `<h2>We could not finish that</h2>
     <div class="banner bad"><b>${esc(head)}</b>
