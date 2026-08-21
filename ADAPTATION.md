@@ -157,10 +157,14 @@ so the terminal version and a review queue can stand in for each other, and
 `QueueConsole` is the second one: the run parks, the browser stays open on the
 screen it stopped at, and a person answers over HTTP. Everything above it was
 already real -- the ownership state machine, the intervention packet, the
-re-check before control comes back. It is off unless `--operator` says somebody
-is watching, because an unattended run should stop and say a person was needed
-rather than wait on one; and an unanswered handoff aborts after three minutes,
-which is the same ending by a slower route.
+re-check before control comes back. Who answers is decided per run, not per
+process: an invocation says whether anybody is waiting on it, so one server
+serves both and there is no flag to forget.
+`--operator` still exists and still means every run on that server may park,
+including callers that are not the console. It only asks to be asked -- it
+cannot approve anything or widen what a run may do, and what it displaces is
+giving up. The default stays the unattended answer, and an unanswered handoff
+aborts after three minutes, which is that same ending by a slower route.
 
 Building it found the escalation path's own dead spot. `verify_resume` refuses
 without a confirmed checkpoint, which is right when a run broke before
@@ -271,12 +275,12 @@ that read degrades on every replay by construction.
 ```bash
 # no credentials needed for any of this
 PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
-    --operator --confirmable meridian_transfer_recorded   # then open localhost:8080
+    --confirmable meridian_transfer_recorded   # then open localhost:8080
 
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 118 unit, 31 end-to-end against a real browser, nothing mocked. The rule
+Suites: 126 unit, 31 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

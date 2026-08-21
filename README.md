@@ -47,7 +47,7 @@ The tests, which also need no credentials:
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 118
+.venv/bin/python -m pytest tests -q        # 122
 .venv/bin/python tests/test_replay.py      # 31, real browser
 ```
 
@@ -330,12 +330,12 @@ failures are a disagreement between the two.
 
 ## Tests
 
-126 in total, all against the real fixture with a real browser. No mocked pages:
+157 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 108 unit tests: perception (needs the fixture up), policy, escalation, recorder
+# 116 unit tests: perception (starts its own fixture), policy, escalation, recorder
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
 # 10 more, covering the CLI
@@ -345,9 +345,9 @@ PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
-`tests/test_replay.py` collects nothing under pytest. Those 29 cases run only
-when the file is called directly, as above. `pytest tests -q` reports 97,
-which is the same 87 and 10 counted together.
+`tests/test_replay.py` collects nothing under pytest. Those 31 cases run only
+when the file is called directly, as above. `pytest tests -q` reports 126,
+which is the same 116 and 10 counted together.
 
 | suite | covers |
 |---|---|
