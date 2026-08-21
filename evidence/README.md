@@ -6,13 +6,14 @@ written last and is the only file that means "this run finished".
 
 ## Against MERIDIAN CORE, the hosted target
 
-Five bundles, chosen because between them they cover every way a run can end.
+Six bundles, chosen because between them they cover every way a run can end.
 
 | run | what it shows |
 |---|---|
 | `...212018Z_record-meridian-transfer-recorded_7c690e` | a model working out how to move money, 11 turns, 46s |
 | `...213457Z_meridian-funds-transfer_9cfe58` | the same job replayed with no model: `success`, confirmation `CN480137` |
 | `...213516Z_meridian-funds-transfer_1f3b52` | the same job again with nobody authorized to approve it: stops at step 11, **before the write**, and leaves an intervention packet with screenshots |
+| `...035523Z_meridian-transfer-recorded_6efd79` | the same stop, answered: a person resumed it in the console and the transfer posted, confirmation `CN480202`. `run.jsonl` carries both escalation lines, the second with the answer |
 | `...213458Z_meridian-place-hold_8acbbe` | a teller attempting a supervisor-only action: `business_outcome / supervisor_required`, not a crash |
 | `...211103Z_meridian-balance-recorded_2955f5` | a read that still worked and should not be trusted — see below |
 

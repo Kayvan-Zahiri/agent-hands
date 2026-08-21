@@ -1,0 +1,23 @@
+{
+  "outcome": "success",
+  "capability": "meridian_transfer_recorded",
+  "outputs": {
+    "confirmation_number": "CN480202"
+  },
+  "business_code": null,
+  "message": "flow completed",
+  "failed_step": null,
+  "expected": null,
+  "observed": null,
+  "recovered": [],
+  "degraded": [
+    {
+      "step": 14,
+      "primary": "role_name",
+      "won_by": "nth_of_role",
+      "rank": 2
+    }
+  ],
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260821T035523Z_meridian-transfer-recorded_6efd79",
+  "escalated": false
+}

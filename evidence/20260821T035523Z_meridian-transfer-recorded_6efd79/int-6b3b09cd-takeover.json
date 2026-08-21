@@ -1,0 +1,10 @@
+{
+  "request_id": "int-6b3b09cd",
+  "decision": "resume",
+  "url_before": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "url_after": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "page_moved": false,
+  "note": "answered in the console",
+  "seconds": 14.59,
+  "screenshot_after": "/Users/kayvan/Desktop/agent-hands/evidence/20260821T035523Z_meridian-transfer-recorded_6efd79/int-6b3b09cd-after.png"
+}
