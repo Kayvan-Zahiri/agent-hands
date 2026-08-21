@@ -207,6 +207,45 @@ def read_capability(page: Any, on_screen: str, out: str, declared: ValueType) ->
         ])
 
 
+def transfer_capability(page: Any) -> Capability:
+    """A flow that has to choose from dropdowns, which nothing else here does.
+
+    The fixture had no `<select>` at all until this screen existed, so the whole
+    SELECT path -- the recorder's tool, the engine's action, and choosing by the
+    option's value rather than its label -- ran only against the hosted target.
+    The labels here carry a balance on purpose: recording the label would bake
+    one member's money into a capability meant to run for everybody.
+    """
+    page.goto(BASE + "/transfer")
+    obs = observe(page)
+    fields = {}
+    for node in obs.nodes:
+        if node.role in ("textbox", "combobox", "searchbox"):
+            targets = derive_targets(node, _frame(obs, node))
+            fields[targets.primary.value] = targets
+    button = next(n for n in obs.nodes if n.role == "button" and n.name == "Continue")
+    return Capability(
+        name="fixture_transfer", description="Move money between two accounts.",
+        app_id="meridian-core", entry_url=BASE + "/transfer",
+        params=[Param("from_account", "string", True, "account to debit", "AC-1"),
+                Param("to_account", "string", True, "account to credit", "AC-2"),
+                Param("amount", "string", True, "how much", "1.00")],
+        outputs=[], approved=True, business_rules=RULES,
+        steps=[
+            Step(0, ActionKind.NAVIGATE, url=BASE + "/transfer", risk=Risk.SAFE,
+                 checkpoint=Checkpoint("text_present", "Funds Transfer")),
+            Step(1, ActionKind.SELECT, target=fields["From Account"], text="{from_account}",
+                 risk=Risk.REVERSIBLE),
+            Step(2, ActionKind.SELECT, target=fields["To Account"], text="{to_account}",
+                 risk=Risk.REVERSIBLE),
+            Step(3, ActionKind.TYPE, target=fields["Amount"], text="{amount}",
+                 risk=Risk.REVERSIBLE),
+            Step(4, ActionKind.CLICK, target=derive_targets(button, _frame(obs, button)),
+                 risk=Risk.REVERSIBLE,
+                 checkpoint=Checkpoint("text_present", "Transfer Posted")),
+        ])
+
+
 def run(page: Any, cap: Capability, params: dict, policy: Policy | None = None) -> Any:
     """One replay with no operator available, so escalations abort rather than wait."""
     console = ScriptedConsole(decision=OpDecision.ABORT, note="unattended", approves=False)
@@ -451,6 +490,24 @@ def main() -> int:
             optional.steps[1].text = "{member_id}{note}"
             suite.check(Case("an optional parameter left out", Outcome.SUCCESS),
                         run(page, optional, {"member_id": "12345"}))
+
+            # Choosing from a dropdown, end to end. Every step here is addressed
+            # by its caption, on a form whose shape used to make that impossible.
+            _reset()
+            moving = transfer_capability(page)
+            suite.check(Case("chooses from two dropdowns", Outcome.SUCCESS, degraded=[]),
+                        run(page, moving, {"from_account": "AC-1", "to_account": "AC-2",
+                                           "amount": "1.00"}))
+
+            # The option's value, not the label a person reads. The labels here
+            # carry a balance, so a flow that matched on them would break the
+            # moment the money moved.
+            by_label = copy.deepcopy(moving)
+            by_label.name = "fixture_transfer_by_label"
+            by_label.params[0] = replace(by_label.params[0], example="AC-1")
+            suite.check(Case("an option chosen by its value", Outcome.SUCCESS),
+                        run(page, by_label, {"from_account": "AC-2", "to_account": "AC-1",
+                                             "amount": "2.00"}))
 
             print("\nhard failures:")
             for mode, label in [("timeout", "session expired"),

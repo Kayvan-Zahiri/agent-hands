@@ -142,6 +142,44 @@ def _search_form(message: str = "", fail: str = "") -> bytes:
 </td></tr></table>""", "Member Search")
 
 
+def _transfer_form() -> bytes:
+    """A form with two shapes the search screen does not have.
+
+    Several consecutive caption/field rows, and dropdowns. Both were blind spots:
+    the search form is a single such row followed by a row holding an anchor, so
+    a caption strategy that also looked at the row below never matched anything
+    there and its bug stayed invisible. And there was no `<select>` anywhere, so
+    nothing exercised choosing an option.
+
+    The option labels carry a balance the way a real servicing console does, so a
+    recording that stored the label instead of the value would bake one member's
+    money into a capability meant to run for everybody.
+    """
+    return _page("""
+<table cellpadding="6" cellspacing="0" border="0" width="100%"><tr><td>
+<font face="Verdana" size="2"><b>Funds Transfer</b></font><br><br>
+<form action="/transfer" method="get">
+<table cellpadding="3" cellspacing="0" border="0">
+  <tr><td align="right"><font face="Verdana" size="2">From Account</font></td>
+      <td><select name="from">
+        <option value="AC-1">AC-1 - Regular Shares ($1,204.00)</option>
+        <option value="AC-2">AC-2 - Money Market ($88.10)</option>
+      </select></td></tr>
+  <tr><td align="right"><font face="Verdana" size="2">To Account</font></td>
+      <td><select name="to">
+        <option value="AC-1">AC-1 - Regular Shares ($1,204.00)</option>
+        <option value="AC-2">AC-2 - Money Market ($88.10)</option>
+      </select></td></tr>
+  <tr><td align="right"><font face="Verdana" size="2">Amount</font></td>
+      <td><input type="text" name="amount" id="ctl00_amt" size="12"></td></tr>
+  <tr><td align="right"><font face="Verdana" size="2">Memo</font></td>
+      <td><input type="text" name="memo" id="ctl00_memo" size="24"></td></tr>
+  <tr><td></td><td><input type="submit" value="Continue"></td></tr>
+</table>
+</form>
+</td></tr></table>""", "Funds Transfer")
+
+
 def _member_page(m: dict) -> bytes:
     return _page(f"""
 <table cellpadding="6" cellspacing="0" border="0" width="100%"><tr><td>
@@ -217,6 +255,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(_page('<font face="Verdana" size="2">reset</font>', "reset"))
         if path == "/nav":
             return self._send(_nav())
+        if path == "/transfer":
+            if (q.get("amount") or [""])[0]:
+                return self._send(_page(
+                    '<font face="Verdana" size="2"><b>Transfer Posted</b><br><br>'
+                    'Confirmation&nbsp;&nbsp;TX-4417</font>', "Transfer Posted"))
+            return self._send(_transfer_form())
         if path == "/dialog":
             return self._send(_dialog(_resume_query(q)))
 

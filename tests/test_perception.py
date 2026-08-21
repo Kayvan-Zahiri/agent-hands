@@ -282,6 +282,73 @@ class PerceptionTest(unittest.TestCase):
         self.assertIn("not present", caught.exception.attempts[0].reason)
 
 
+class StackedFormTest(unittest.TestCase):
+    """A form with several caption/field rows, which the search screen is not.
+
+    The caption strategy used to look in two directions at once and treat two
+    matches as a layout too ambiguous to guess at. On a stacked form the second
+    direction does not find the same field from another angle -- it finds the
+    next row's field -- so every field matched twice and was refused, and every
+    control fell through to being counted by position.
+
+    The search screen has exactly one caption/field row followed by a row holding
+    an anchor, so the second direction never matched there and the bug stayed
+    invisible to every test in this file. This screen exists so it cannot.
+    """
+
+    fixture: Fixture
+    browser: Browser
+    _fixture_cm: Fixture
+    _pw: Playwright
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._fixture_cm = Fixture("default")
+        cls.fixture = cls._fixture_cm.__enter__()
+        cls._pw = sync_playwright().start()
+        cls.browser = cls._pw.chromium.launch()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls._pw.stop()
+        cls._fixture_cm.__exit__()
+
+    def setUp(self) -> None:
+        self.page = _open(self.browser, self.fixture.url + "/transfer")
+
+    def tearDown(self) -> None:
+        self.page.close()
+
+    def _fields(self) -> list[TargetSet]:
+        # A list, not a dict keyed by name: none of these controls has an
+        # accessible name, which is the whole reason the caption strategy exists.
+        obs = observe(self.page)
+        return [derive_targets(n, _frame(obs, n))
+                for n in obs.nodes if n.role in ("textbox", "combobox", "searchbox")]
+
+    def test_every_field_is_addressed_by_its_caption(self) -> None:
+        found = {t.primary.value for t in self._fields()}
+
+        self.assertEqual({"From Account", "To Account", "Amount", "Memo"}, found)
+
+    def test_none_of_them_fall_through_to_counting(self) -> None:
+        # The failure this screen exists to catch: refusing the caption strategy
+        # leaves position, which is the brittleness the module exists to avoid.
+        for targets in self._fields():
+            with self.subTest(caption=targets.primary.value):
+                self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
+
+    def test_a_caption_resolves_to_the_control_beside_it(self) -> None:
+        # Matching one element is not enough; it has to be the right one.
+        fields = self._fields()
+        for caption, want in (("From Account", "from"), ("To Account", "to"),
+                              ("Amount", "amount"), ("Memo", "memo")):
+            targets = next(t for t in fields if t.primary.value == caption)
+            with self.subTest(caption=caption):
+                self.assertEqual(want, resolve(self.page, targets).get_attribute("name"))
+
+
 class VariantTest(unittest.TestCase):
     """The same code against a second tenant of the same vendor product.
 
