@@ -255,7 +255,12 @@ class Run:
             "status": self.status,
             "result": self.result,
             "error": self.error,
-            "pending": self.pending,
+            # Without the two absolute paths. They name this machine's
+            # directories, the caller has no use for them, and `_execute`
+            # already keeps them out of the result body for the same reason.
+            "pending": None if self.pending is None else
+            {k: v for k, v in self.pending.items()
+             if k not in ("screenshot", "evidence_dir")},
         }
 
 
@@ -417,7 +422,14 @@ class Invoker:
         was needed. Approving automatically would wave through exactly the
         irreversible steps the gate is for.
         """
-        if run is not None and (self.operator or run.watched):
+        # `--headed` already calls itself "required for a handoff to a person";
+        # this is where that stops being a description and starts being true.
+        # A headless server has no window for anybody to look at, so "the
+        # browser is still on the screen it stopped at" would be a lie and
+        # Resume would mean nothing. It is also the way to refuse parking
+        # outright: an unattended deployment runs headless and cannot be asked
+        # to hold a browser open by any caller.
+        if run is not None and self.headed and (self.operator or run.watched):
             return QueueConsole(run)
         return ScriptedConsole(decision=OperatorDecision.ABORT,
                                note="no operator console is attached to the API",
@@ -543,6 +555,17 @@ class QueueConsole:
         self.timeout = timeout_seconds
 
     def ask(self, request: InterventionRequest) -> Response:
+        # An answer that arrived before its question is not an answer to it.
+        # The decision route checks `pending` and then puts, which is two steps,
+        # so a second click -- or a second console -- can leave one sitting in
+        # the queue. It would then satisfy the NEXT handoff the moment it was
+        # raised, nobody having seen the packet, which is the single thing this
+        # gate exists to prevent. Drain first: the question is asked below.
+        while True:
+            try:
+                self.run.answers.get_nowait()
+            except queue.Empty:
+                break
         self.run.pending = request.to_json()
         self.run.status = "awaiting_operator"
         try:
@@ -744,8 +767,12 @@ class _Handler(BaseHTTPRequestHandler):
         # "operator" only asks to be asked. It cannot approve anything, reach a
         # gate or widen what the run may do -- it chooses who answers when the
         # engine stops, and the alternative it displaces is giving up.
-        run = inv.start(name, args, body.get("confirm"),
-                        watched=bool(body.get("operator")))
+        watched = body.get("operator", False)
+        if not isinstance(watched, bool):
+            # `args` is type-checked three lines up; coercing here would mean
+            # {"operator": "false"} turns parking on.
+            return self._send(400, {"error": "operator must be true or false"})
+        run = inv.start(name, args, body.get("confirm"), watched=watched)
         run.done.wait(timeout=float(body.get("wait_seconds", DEFAULT_WAIT_SECONDS)))
         if run.status != "completed":
             return self._send(202, run.to_json())

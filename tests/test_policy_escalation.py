@@ -1001,3 +1001,72 @@ class TestWhoAnswersIsPerRun(unittest.TestCase):
     def test_a_recording_has_no_run_to_ask_for_one(self) -> None:
         self.assertEqual("ScriptedConsole",
                          type(self.invoker(operator=True)._console(None)).__name__)
+
+
+class TestAnswersDoNotOutliveTheirQuestion(unittest.TestCase):
+    """A queued answer must not satisfy a handoff nobody has seen.
+
+    The decision route checks `pending` and then puts, which is two steps, so a
+    second click -- or a second console -- can leave an answer in the queue. Left
+    there it would satisfy the next handoff the instant it was raised, with the
+    packet never reaching a person. That is the one outcome the gate exists to
+    prevent, and it costs two lines to close, so it is closed rather than argued
+    about from the current UI being unable to reach it.
+    """
+
+    def console(self, timeout: float = 5.0) -> tuple[Any, Any]:
+        from agent_hands.api import QueueConsole, Run
+        run = Run(run_id="r1", capability="c", args={})
+        return QueueConsole(run, timeout_seconds=timeout), run
+
+    def packet(self) -> InterventionRequest:
+        return InterventionRequest(id="h1", reason=Reason.APPROVAL, capability="c",
+                                   step_index=13, question="post this transfer?")
+
+    def test_an_answer_left_over_from_before_is_discarded(self) -> None:
+        console, run = self.console(0.2)
+        run.answers.put(("resume", "a second click on the last handoff"))
+
+        # Nobody answers *this* one, so it must end the way an unanswered
+        # handoff ends, not by consuming the stale yes.
+        self.assertIs(OperatorDecision.ABORT, console.ask(self.packet()).decision)
+
+    def test_an_answer_given_to_this_question_still_arrives(self) -> None:
+        # The real ordering: the drain runs first, the packet goes up, and the
+        # person answers after seeing it. Only the stale one is thrown away.
+        import threading
+        console, run = self.console()
+        run.answers.put(("abort", "stale, from a handoff already over"))
+        threading.Timer(0.05, lambda: run.answers.put(("resume", "looked at it"))).start()
+
+        reply = console.ask(self.packet())
+
+        self.assertIs(OperatorDecision.RESUME, reply.decision)
+        self.assertEqual("looked at it", reply.note)
+
+
+class TestAHandoffNeedsAWindow(unittest.TestCase):
+    """`--headed` calls itself required for a handoff; this makes that true.
+
+    A headless server has no window for anybody to look at, so the console's
+    "the browser is still on the screen it stopped at" would be a lie and
+    Resume would mean nothing. It is also how parking is refused outright: an
+    unattended deployment runs headless and no caller can ask it to hold a
+    browser open.
+    """
+
+    def console(self, *, headed: bool, watched: bool, operator: bool = False) -> str:
+        from agent_hands.api import Catalog, Invoker, Run
+        inv = Invoker(Catalog(root=Path(".")), headed=headed, operator=operator)
+        run = Run(run_id="r1", capability="c", args={}, watched=watched)
+        return type(inv._console(run)).__name__
+
+    def test_headless_refuses_to_park_however_it_is_asked(self) -> None:
+        self.assertEqual("ScriptedConsole", self.console(headed=False, watched=True))
+        self.assertEqual("ScriptedConsole",
+                         self.console(headed=False, watched=False, operator=True))
+
+    def test_with_a_window_both_routes_park(self) -> None:
+        self.assertEqual("QueueConsole", self.console(headed=True, watched=True))
+        self.assertEqual("QueueConsole",
+                         self.console(headed=True, watched=False, operator=True))
