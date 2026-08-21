@@ -1,10 +1,19 @@
 # agent-hands: design report
 
+**What this is about.** Some business applications have no API — the only way to
+make them do anything is to click through the screen. agent-hands lets an AI do
+that clicking once, writes down exactly what it did, and then repeats it with
+ordinary code and no AI. This document is the reasoning behind how it is built,
+and an honest list of what it does not do.
+
+> Every term below is defined in `README.md`: capability, artifact, replay,
+> checkpoint, escalate.
+
 ## Architecture
 
-A model drives the application once, at record time, and produces a **capability
-artifact**. A deterministic engine replays that artifact, with no model in the
-loop.
+An AI drives the application once, at record time, and produces a **capability
+artifact** — a file listing the steps it took and how to find each control
+again. From then on, ordinary code replays that file, with no AI involved.
 
 ```
 record (once, supervised, costs a model call)
@@ -142,7 +151,7 @@ Each one is written to the log, because a system that quietly recovers is a
 system that can limp for months before anyone notices.
 
 The full behavior. `tests/test_replay.py` drives the engine against the live
-fixture and asserts the outcome of each, 26/26 passing, alongside 92 unit tests
+fixture and asserts the outcome of each, 34/34 passing, alongside 134 unit tests
 covering perception, policy, escalation and the CLI:
 
 | case | outcome | note |

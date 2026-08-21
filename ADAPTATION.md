@@ -1,9 +1,18 @@
 # Adapting agent-hands to MERIDIAN CORE
 
-The core is unchanged in shape: a model drives an application once and writes a
-reviewable artifact; a deterministic engine replays it with no model in the loop.
-Pointing it at MERIDIAN CORE took a handful of edits to shared code, two new
-modules, and seven artifacts. This is what each of those was, and what I got wrong.
+**In one paragraph:** agent-hands lets an AI click through an application once
+and write down what it did. After that, ordinary code follows the written-down
+recipe and the AI is never used again. MERIDIAN CORE is a credit-union banking
+application — a realistic stand-in built for this exercise, not a real bank —
+with no API, so the only way in is the screen. This is the story of pointing one
+at the other.
+
+The test was whether that would be a configuration job or a rewrite. It was
+mostly configuration: a handful of edits to shared code, two new files, and
+seven recipes. What follows is each of those, and the things I got wrong.
+
+> New here? `README.md` explains the idea and defines every term this document
+> uses — capability, artifact, replay, checkpoint, escalate.
 
 ## What the adaptation actually took
 
@@ -140,8 +149,11 @@ a default, and it cannot be replayed against a different amount:
 | confirmation for a different amount | `failure` at the post step — declined |
 | confirmation bound to these arguments | `success`, confirmation `CN480069` |
 
-Nothing is confirmable unless a server-side flag names it, and Place Hold is
-deliberately left out: it is the restricted function, and a supervisor deciding
+Nothing is confirmable unless a server-side flag names it. Place Hold should be
+left out of that flag for the same reason it is gated at all — a supervisor
+deciding is the point of it — and the `--confirmable` list printed in the README
+currently includes it, which is a contradiction between the doc and the command
+and is called out in the cuts below. Place Hold is: it is the restricted function, and a supervisor deciding
 is the point of it. This is a deliberate-action gate, not an authorization one —
 nothing here knows who is asking. Real authorization needs identity, which this
 system does not have.
@@ -251,6 +263,37 @@ The transfer has the same shape structurally. Its confirmation read recorded
 `cell "CN480134"` as the primary target, and every run issues a new number, so
 that read degrades on every replay by construction.
 
+## The second failure worth reading
+
+Signing on with the wrong password reported **success**, and exited 0.
+
+A step finishes when its checkpoint holds — "the screen should now say X".
+Step 4 of every recipe here waits for `MAIN MENU`. MERIDIAN prints a
+function-key bar along the bottom of every screen it renders:
+
+```
+F3=Sign Off   F5=Main Menu   F7=Member Inquiry   F12=Cancel
+```
+
+Including the screen it returns when it refuses a sign-on. The engine asked
+Playwright's `get_by_text`, which matches without regard to case, so
+`F5=Main Menu` satisfied a checkpoint on `MAIN MENU`. The run never reached the
+main menu, and said it had.
+
+The deeper fault is that the two halves of the same checkpoint disagreed. The
+engine's wait was case-insensitive; `default_verify`, which re-checks the screen
+before an operator hands control back, has always compared with a plain `in` —
+case-sensitive. One checkpoint, two meanings. The fix makes the wait
+case-sensitive too, which is a one-line change and lines the halves up.
+
+It is the same shape as the balance above: not a crash, an answer that is wrong
+and that nothing in the run contradicts. And it was invisible at home for the
+same reason the caption bug was — the local practice app had no function-key
+bar, so no screen there ever carried a phrase that differed from a checkpoint
+only by case. That fixture now prints one, and three cases in the behavior suite
+hold it: the phrase the screen really shows passes, the same phrase in the wrong
+case fails, and a phrase containing a `.` still matches literally.
+
 ## What I left out, and what I would build next
 
 - **Reads have no label-relative target in the engine.** The failure above is
@@ -268,6 +311,10 @@ that read degrades on every replay by construction.
   wrong one for a queue with depth. Parking properly means letting the browser
   go and re-establishing it on resume, which the artifact makes possible and
   nothing here does.
+- **The shipped start command contradicts the paragraph above.** README's
+  `--confirmable` list names `meridian_place_hold_recorded`, which lets a caller
+  authorize the one action this write-up says only a supervisor should. Drop it
+  from the command; the claim is the better position.
 - **Recorded artifacts still checkpoint only their last step.** The approval
   handoff no longer needs one, but a resume after a failed checkpoint or an
   unfound control does, and there it still refuses. The fix belongs in the
@@ -283,7 +330,7 @@ PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 130 unit, 31 end-to-end against a real browser, nothing mocked. The rule
+Suites: 134 unit, 34 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

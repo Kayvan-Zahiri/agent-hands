@@ -1,7 +1,14 @@
 # Run it
 
-Every command, in order. Python 3.10 or newer. Nothing here needs an API key
-except the one section that says so.
+**What you are about to start:** a web page on your own machine that drives a
+real banking application by clicking through its screens, the way a person
+would. Pick a job, fill in what it needs, watch it work, read the answer back.
+
+The clicking is done by ordinary code following a recipe that an AI wrote down
+once, earlier. Running it needs no AI and no API key. Only §5, where you record
+a *new* recipe, does.
+
+Every command below is in order. Python 3.10 or newer.
 
 ## 1. Set up
 
@@ -16,8 +23,9 @@ python3 -m venv .venv
 
 ## 2. Start the console
 
+You are already in the repo from §1 — stay there.
+
 ```bash
-cd agent-hands
 export PYTHONPATH=.
 
 .venv/bin/python -m agent_hands.api --port 8080 --headed \
@@ -129,8 +137,8 @@ approved artifact and there is not one yet.
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 130
-.venv/bin/python tests/test_replay.py      # 31, real browser
+.venv/bin/python -m pytest tests -q        # 134
+.venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
 Both start their own local fixture. Neither needs a key.
@@ -167,5 +175,5 @@ with `curl -s -o /dev/null -w "%{http_code}" localhost:8080/`.
 **Everything against the target fails.** Check it is up:
 `curl -s -o /dev/null -w "%{http_code}" https://web-sample.interface-hiring.com/signon`
 
-**`no tests ran`, or a count below 130 / 31.** You are not in the repo root.
+**`no tests ran`, or a count below 134 / 34.** You are not in the repo root.
 pytest exits `4` and looks almost green.

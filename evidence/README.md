@@ -1,5 +1,18 @@
 # Evidence
 
+**What you are looking at.** Every time this system drives the banking
+application, it saves everything about that attempt into one folder here: every
+step it took, how long each took, what the screen said, and screenshots when
+something went wrong. That folder is how you check what it really did rather
+than taking its word for it.
+
+The folders named `record-*` are the one-off runs where an AI worked a task out.
+The rest are replays: ordinary code following the recipe the AI wrote, which is
+the path that runs in production.
+
+**The two files that matter.** `result.json` is the verdict — did it work, did
+the application say no, or did it break. `run.jsonl` is the blow-by-blow.
+
 One directory per run. `run.jsonl` is append-only and flushed per line, so a
 process killed mid-step still leaves the steps before it. `result.json` is
 written last and is the only file that means "this run finished".

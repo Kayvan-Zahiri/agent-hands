@@ -1,13 +1,68 @@
 # agent-hands
 
-Record a back-office web flow once with a model driving. Replay it thousands of
-times with no model involved. Pointed at a real credit-union servicing console
-with no API, where the only way in is the screen.
+**Teach an AI to click through an old business application once. Then do it
+again forever, without the AI.**
 
-The bet is that exploration and execution are different problems. Exploration is
-expensive, non-deterministic, and worth a person's attention. Execution is none
-of those. So a model drives the application exactly once, at record time, and
-what it produces is a reviewable artifact that a deterministic engine runs.
+## The problem
+
+Banks, insurers and hospitals run on software with no way in except the screen.
+There is no API, no integration, nothing another program can call. If you want
+the system to look up an account or move money, a person has to sit down and
+click through it. That software is thirty years old, it works, and nobody is
+going to replace it.
+
+So people do the clicking. The same fourteen clicks, hundreds of times a day.
+
+## What this does
+
+**Once**, an AI is pointed at the application and told what to achieve — *"sign
+on as teller1, look up member 103001, read their savings balance."* It works out
+the screens by itself, clicking the way a person would. While it does that, the
+system writes down exactly what it did: which field, which button, in what
+order, and how to find each one again.
+
+That written-down recipe is a file. You can open it and read it before you trust
+it. Somebody has to approve it before it will run.
+
+**Every time after that, the AI is not involved.** Ordinary code follows the
+recipe. Same input, same clicks, same answer — today, tomorrow, and a thousand
+runs from now.
+
+The bet is that working something out and doing it again are different problems.
+Working it out is expensive, unpredictable, and worth an AI. Doing it again is
+none of those, and an AI doing it again would be slow, costly, and slightly
+different every time.
+
+## Three ways a run can end
+
+Keeping these apart is most of the value.
+
+| ending | what it means |
+|---|---|
+| **it worked** | here is what it read back — a balance, a confirmation number |
+| **the application said no** | *"no such member"*, *"you need a supervisor for that"*. An **answer**, not a breakage |
+| **it broke** | the screen was not what the recipe expected. Nothing was changed, and it says which step and what it saw instead |
+
+The middle one is what most automation gets wrong. A system that reports "no
+such member" as a crash gets somebody paged at 3am because a customer mistyped
+their account number.
+
+## The words this project uses
+
+Five names for one thing is the fastest way to lose a reader, so here they are
+in one place.
+
+| word | plain English |
+|---|---|
+| **capability** | one job it knows how to do, like "check a balance". The console calls these **Jobs**; the files live in `capabilities/` |
+| **artifact** | the file holding one capability's recipe. Also called a **recording** |
+| **record** | the single AI-driven run that writes a recipe |
+| **replay** | following a recipe, with no AI involved. This is the production path |
+| **checkpoint** | *"the screen should now say X"* — how a step knows it worked |
+| **evidence** | everything saved about a run: every step, its timing, screenshots |
+| **escalate** | stop and ask a person, leaving the browser open on the screen it stopped at |
+| **MERIDIAN CORE** | the banking application this is pointed at. A realistic stand-in, built for this exercise, hosted at `web-sample.interface-hiring.com` — not a real bank |
+| **the console** | *our* web page for driving and watching it. MERIDIAN is "the banking app"; the console is always ours |
 
 ## Quickstart
 
@@ -47,8 +102,8 @@ The tests, which also need no credentials:
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 130
-.venv/bin/python tests/test_replay.py      # 31, real browser
+.venv/bin/python -m pytest tests -q        # 134
+.venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
 And one capability from the command line:
@@ -82,7 +137,7 @@ versions — one a model recorded, one written by hand — and all of them appro
 export PYTHONPATH=.
 alias agent-hands=".venv/bin/python -m agent_hands"
 
-# read a balance off the live system, with no model in the loop
+# read a balance off the live system, with no AI in the loop
 agent-hands replay capabilities/meridian/meridian_balance_recorded.json \
   --param operator=teller1 --param password=password --param branch=MAIN-001 \
   --param member_id=103001 --unattended
@@ -96,8 +151,8 @@ agent-hands replay capabilities/meridian/meridian_place_hold.json \
 
 ### The console
 
-One page: ask for a job in plain words, watch it drive the real application, and
-read back what it did step by step. It also puts a real recorded session beside
+One page: pick a job, fill in what it needs, watch it drive the real banking
+app, and read back what it did step by step. It also puts a real recorded session beside
 real replays of the file that session produced, which is the argument for the
 whole design in two columns.
 
@@ -330,24 +385,24 @@ failures are a disagreement between the two.
 
 ## Tests
 
-161 in total, all against the real fixture with a real browser. No mocked pages:
+168 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 120 unit tests: perception (starts its own fixture), policy, escalation, recorder
+# 124 unit tests: perception (starts its own fixture), policy, escalation, recorder
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
 # 10 more, covering the CLI
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
 
-# 31 end-to-end behaviors; starts its own fixture if one is not running
+# 34 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
-`tests/test_replay.py` collects nothing under pytest. Those 31 cases run only
-when the file is called directly, as above. `pytest tests -q` reports 130,
-which is the same 120 and 10 counted together.
+`tests/test_replay.py` collects nothing under pytest. Those 34 cases run only
+when the file is called directly, as above. `pytest tests -q` reports 134,
+which is the same 124 and 10 counted together.
 
 | suite | covers |
 |---|---|
