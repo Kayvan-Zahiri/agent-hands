@@ -464,6 +464,19 @@ const DESK_WHY = {
   _: 'This needs a person to look at it.',
 };
 
+/* Filled in so the form can be walked through by clicking. Only for the
+   parameters no artifact carries an example for -- everything else is seeded
+   from the capability itself. Every value here has been run against the live
+   target. The password is the demo operator's, the same one README, RUN.md and
+   every replay command in the repo already print in the clear. */
+const DESK_DEMO = {
+  password: 'password',
+  from_share: '103001-MMKT-3', to_share: '103001-S0070-7',
+  share_id: '103001-MMKT-3',
+  email: 'd.vaughan@example.test', phone: '555-0199', address: '14 Bay Street',
+  notes: 'demo', memo: 'demo',
+};
+
 let deskCap = null, deskRun = null, deskBusy = false;
 
 function service() {
@@ -506,7 +519,7 @@ function deskForm(values) {
         p.required ? '' : ' <span class="dim">(optional)</span>'}</span>
       <input id="f-${esc(p.name)}" name="${esc(p.name)}"
         type="${p.name === 'password' ? 'password' : 'text'}"
-        value="${esc(v[p.name] || (DESK_SIGNON.has(p.name) ? (p.example || '') : ''))}"
+        value="${esc(v[p.name] || p.example || DESK_DEMO[p.name] || '')}"
         ${p.example && !DESK_SIGNON.has(p.name) ? `placeholder="e.g. ${esc(p.example)}"` : ''}>
       ${DESK_HINT[p.name] ? `<span class="hint">${esc(DESK_HINT[p.name])}</span>` : ''}
     </label>`;
@@ -643,6 +656,18 @@ function deskLine(s) {
 /* 5b. somebody has to say yes */
 function deskWait(runId, pending) {
   if ($('#d-ok')) return;
+  // Only one kind of stop is this person's to answer: whether they authorize
+  // the write they asked for. Every other kind means the screen is not what the
+  // recording expected, and the person who filled in this form is not looking
+  // at that browser and cannot fix it. Offering them Approve would be asking
+  // them to wave through something they cannot see, and it would only retry and
+  // fail again. Let it go, and tell them plainly.
+  if (pending.reason !== 'approval_required') {
+    j(`/invocations/${runId}/decision`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'abort', note: 'nobody at this screen to fix it' }) });
+    return;
+  }
   $('#desk').innerHTML = `<h2>Waiting for approval</h2>
     <p class="sub">This needs a person to say yes before it goes through.</p>
     <div class="banner wait"><b>${esc(DESK_WHY[pending.reason] || DESK_WHY._)}</b>
@@ -689,17 +714,25 @@ function deskDone(run) {
         This is the system's answer, not a fault. Nothing was changed.</div>
       ${deskAgain()}`;
   } else {
-    deskFail(run.run_id, res.message || run.error || '');
+    // MERIDIAN says nothing when it rejects a sign-on -- it re-draws the empty
+    // form. So the only signal is which screen the run was looking at when it
+    // gave up, which the result already carries. A business rule cannot do this
+    // job: the same words are on the first screen of every run, so the rule
+    // would fire before anything had happened.
+    const stuck = /OPERATOR SIGN ON|NOT SIGNED ON/i.test(res.observed || '');
+    deskFail(run.run_id, res.message || run.error || '', stuck);
   }
 }
 
-function deskFail(runId, detail) {
+function deskFail(runId, detail, signon) {
   const closed = /closed|nobody answered|declined/i.test(detail || '');
+  const head = signon ? 'Those sign-on details were not accepted.'
+    : closed ? 'The request was cancelled before anything changed.'
+    : 'Something went wrong partway through.';
   $('#desk').innerHTML = `<h2>We could not finish that</h2>
-    <div class="banner bad"><b>${closed
-      ? 'The request was cancelled before anything changed.'
-      : 'Something went wrong partway through.'}</b>
-      Nothing was changed. You can try again.</div>
+    <div class="banner bad"><b>${esc(head)}</b>
+      ${signon ? 'Open <i>Signed in as</i> and check the operator ID and password.'
+               : 'Nothing was changed. You can try again.'}</div>
     ${runId ? `<p class="dim">If you need to report this, the reference is
       <b>${esc(runId)}</b>.</p>` : ''}
     ${deskAgain()}`;
