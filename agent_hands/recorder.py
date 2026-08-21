@@ -16,6 +16,7 @@ becomes a parameter; everything else stays literal.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -444,12 +445,26 @@ def _coerce(item: RecordedAction | Step | dict[str, Any]) -> RecordedAction:
 
 def save(capability: Capability, path: Path | str) -> Path:
     """Write the artifact: sorted, indented, newline-terminated, because it gets
-    reviewed in a diff and it decides what an agent is allowed to do."""
+    reviewed in a diff and it decides what an agent is allowed to do.
+
+    Written to a sibling temp file and moved into place, because `os.replace` is
+    atomic on POSIX and a plain write is not. Approving a capability is a
+    load-then-save, so it truncates a file that replays may be reading right
+    then; a reader landing mid-write gets a partial file, `load` raises, and the
+    process exits 1 -- the same code a genuine automation failure uses. A
+    scheduler cannot tell "somebody ran approve" from "the application broke".
+    Sibling rather than the system temp directory, so the move stays on one
+    filesystem and cannot degrade into a copy.
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(capability.to_json(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    blob = json.dumps(capability.to_json(), indent=2, ensure_ascii=False) + "\n"
+    tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(blob, encoding="utf-8")
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
     return target
 
 

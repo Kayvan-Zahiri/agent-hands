@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -698,4 +700,106 @@ class TestWriteVocabulary(unittest.TestCase):
         for label in ("Open New Share", "Place Account Hold", "Search", "Continue"):
             with self.subTest(label=label):
                 self.assertIs(Risk.REVERSIBLE, self.risk(label))
+
+
+class TestAtomicSave(unittest.TestCase):
+    """A reader must never see half an artifact.
+
+    `approve` is a load-then-save, so it rewrites a file that a fleet of replays
+    may be reading at that moment. A torn read raises in `load` and exits 1 --
+    the same code a real automation failure uses, so a scheduler cannot tell
+    "somebody ran approve" from "the application broke".
+    """
+
+    def test_a_reader_racing_a_writer_never_sees_a_partial_file(self) -> None:
+        import threading
+
+        from agent_hands.recorder import load, save
+
+        root = Path(tempfile.mkdtemp(prefix="agent-hands-save-"))
+        try:
+            path = root / "capability.json"
+            # Big enough that a non-atomic write is several filesystem calls, so
+            # a reader has a real window to land inside one.
+            big = make_capability()
+            big.steps = [Step(index=i, action=ActionKind.CLICK, note="x" * 400)
+                         for i in range(120)]
+            save(big, path)
+
+            stop, torn = threading.Event(), []
+
+            def writer() -> None:
+                while not stop.is_set():
+                    save(big, path)
+
+            def reader() -> None:
+                while not stop.is_set():
+                    try:
+                        load(path)
+                    except Exception as exc:            # noqa: BLE001
+                        torn.append(repr(exc))
+                        return
+
+            threads = [threading.Thread(target=writer), threading.Thread(target=reader)]
+            for t in threads:
+                t.start()
+            time.sleep(1.5)
+            stop.set()
+            for t in threads:
+                t.join(timeout=5)
+
+            self.assertEqual([], torn, "a reader saw a partially written artifact")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_it_leaves_no_temp_file_behind(self) -> None:
+        from agent_hands.recorder import save
+
+        root = Path(tempfile.mkdtemp(prefix="agent-hands-save-"))
+        try:
+            save(make_capability(), root / "capability.json")
+            self.assertEqual(["capability.json"], sorted(p.name for p in root.iterdir()))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+class TestAppProfiles(unittest.TestCase):
+    """Which words mean what is a fact about one application, not about replay.
+
+    The engine used to carry a single table looking for "session has expired".
+    Against a target that says "your session has timed out" that is dead code,
+    and two of its six exceptional states went unrecognized.
+    """
+
+    def profile(self, app_id: str):
+        from agent_hands.replay import DEFAULT_PROFILE, PROFILES
+        return PROFILES.get(app_id, DEFAULT_PROFILE)
+
+    def test_each_application_recognizes_its_own_wording(self) -> None:
+        fixture = self.profile("unknown-app")
+        meridian = self.profile("meridian-core")
+
+        self.assertEqual("session_expired",
+                         fixture.condition("Your session has expired").code)
+        self.assertEqual("session_expired",
+                         meridian.condition("YOUR SESSION HAS TIMED OUT").code)
+
+    def test_one_application_s_wording_is_not_the_other_s(self) -> None:
+        # The whole point: neither table is universal, and pretending otherwise
+        # is what made a state unrecognizable on the second target.
+        self.assertIsNone(self.profile("unknown-app").condition("your session has timed out"))
+        self.assertIsNone(self.profile("meridian-core").condition("session has expired"))
+
+    def test_a_refusal_the_engine_cannot_act_on_is_left_to_the_artifact(self) -> None:
+        # "SUPERVISOR OVERRIDE REQUIRED" is the application answering, not
+        # faulting. As a condition it would be a hard failure; as a BusinessRule
+        # it is an outcome the caller can act on. Conditions are for states the
+        # engine can retry, re-enter or dismiss.
+        self.assertIsNone(
+            self.profile("meridian-core").condition("SUPERVISOR OVERRIDE REQUIRED"))
+
+    def test_an_unknown_application_gets_the_default(self) -> None:
+        from agent_hands.replay import DEFAULT_PROFILE
+
+        self.assertIs(DEFAULT_PROFILE, self.profile("something-nobody-configured"))
 
