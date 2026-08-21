@@ -52,6 +52,7 @@ pkill -f "agent_hands.api"
 | **Artifact** | the file a recording produced, including the raw JSON |
 | **Operator** | the same job with nobody authorizing the write: it stops and asks |
 | **Service Desk** | the end-user surface: pick a task, fill in a form, read the answer |
+| **Ask** | the same jobs, asked for in a sentence. Click a suggestion or type one |
 | **Runs** | every run, with its steps and what it read back |
 
 `--headed` opens a browser window you can watch. Share your whole desktop, not a
@@ -70,6 +71,16 @@ and either way nothing is written. The run says which one it was.
 
 `--operator` on the server does the same for *every* run, including callers
 that are not the console. The tab does not need it.
+
+**Ask** is the same jobs again, reached by saying what you want. It works out
+which job that is, asks for anything it still needs, reads writes back before
+doing them, and answers in plain words. Every suggestion under the box is a
+button, so a demo never depends on typing accurately in front of people —
+clicking one sends exactly the text printed on it. It understands the phrasings
+written down in `agent_hands/chat.py` and nothing else, which is a real limit
+and a fair question to invite. No AI runs in the chat loop: `POST /chat` only
+resolves a sentence to a job and its values, and the page then takes that to the
+same invocation route every other caller uses.
 
 **Service Desk** is the same engine with the machinery taken off. It builds a
 form from the capability's declared parameters, reads the answer back in plain
@@ -137,7 +148,7 @@ approved artifact and there is not one yet.
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 134
+.venv/bin/python -m pytest tests -q        # 165
 .venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
@@ -175,5 +186,5 @@ with `curl -s -o /dev/null -w "%{http_code}" localhost:8080/`.
 **Everything against the target fails.** Check it is up:
 `curl -s -o /dev/null -w "%{http_code}" https://web-sample.interface-hiring.com/signon`
 
-**`no tests ran`, or a count below 134 / 34.** You are not in the repo root.
+**`no tests ran`, or a count below 165 / 34.** You are not in the repo root.
 pytest exits `4` and looks almost green.

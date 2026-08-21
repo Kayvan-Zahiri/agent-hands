@@ -294,6 +294,35 @@ only by case. That fixture now prints one, and three cases in the behavior suite
 hold it: the phrase the screen really shows passes, the same phrase in the wrong
 case fails, and a phrase containing a `.` still matches literally.
 
+## The front door
+
+`agent_hands/chat.py`. A sentence resolves to one job and the values it can find;
+`POST /chat` returns that plan and runs nothing, and the page takes it to the
+same invocation route every other caller uses. Keeping those two apart is the
+whole point — a chat box that could reach the engine directly would be a way
+around the gates rather than a way in.
+
+No model runs in it. The claim this project rests on is that the production path
+has no model in the decision loop, and a chat box quietly calling one would blur
+exactly that line. `read_intent` is the seam: a model returning the same
+(capability, slots) pair drops in without anything downstream noticing. What it
+costs is real and worth saying — it understands the phrasings written down in
+that file and nothing else.
+
+It is deterministic, so it is testable, and writing the tests immediately found
+two things reading it had not. "hold on, check the balance" resolved to *freeze
+this account* — a filler word selecting a write, which is the worst mistake the
+module could make. The obvious fix then swallowed "put a hold on member 102777",
+which is a real instruction, so the explicit phrasings are scored before the
+veto. And "for Member 103001" invented the surname *Member*, turning a lookup by
+number into a name search that finds nobody. Both are pinned.
+
+One rule it does not share with the Service Desk: it never fills a business
+value from the recording. Asked for a balance without an account named, it asks.
+The desk seeds its form from examples because the form is on screen to be read
+before anybody clicks; in a sentence there is nothing to read, so choosing which
+of somebody's accounts to look at would be a guess with money attached.
+
 ## What I left out, and what I would build next
 
 - **Reads have no label-relative target in the engine.** The failure above is
@@ -330,7 +359,7 @@ PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 134 unit, 34 end-to-end against a real browser, nothing mocked. The rule
+Suites: 165 unit, 34 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

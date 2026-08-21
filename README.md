@@ -102,7 +102,7 @@ The tests, which also need no credentials:
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 134
+.venv/bin/python -m pytest tests -q        # 165
 .venv/bin/python tests/test_replay.py      # 34, real browser
 ```
 
@@ -151,8 +151,8 @@ agent-hands replay capabilities/meridian/meridian_place_hold.json \
 
 ### The console
 
-One page: pick a job, fill in what it needs, watch it drive the real banking
-app, and read back what it did step by step. It also puts a real recorded session beside
+One page: ask for a job in a sentence or pick it off a list, watch it drive the
+real banking app, and read back what it did step by step. It also puts a real recorded session beside
 real replays of the file that session produced, which is the argument for the
 whole design in two columns.
 
@@ -385,13 +385,13 @@ failures are a disagreement between the two.
 
 ## Tests
 
-168 in total, all against the real fixture with a real browser. No mocked pages:
+199 in total, all against the real fixture with a real browser. No mocked pages:
 every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 124 unit tests: perception (starts its own fixture), policy, escalation, recorder
-PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
+# 155 unit tests: perception (starts its own fixture), policy, escalation, recorder, chat
+PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation tests.test_chat
 
 # 10 more, covering the CLI
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
@@ -401,8 +401,8 @@ PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
 `tests/test_replay.py` collects nothing under pytest. Those 34 cases run only
-when the file is called directly, as above. `pytest tests -q` reports 134,
-which is the same 124 and 10 counted together.
+when the file is called directly, as above. `pytest tests -q` reports 165,
+which is the same 155 and 10 counted together.
 
 | suite | covers |
 |---|---|
