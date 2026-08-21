@@ -236,7 +236,11 @@ function jobs() {
    asks. Nothing on this page changes how any other run behaves -- `operator` is
    sent per invocation, so a run that does not ask still gives up on its own. */
 const DEADLINE = 180;             // matches QueueConsole's, so the page can say so
-let opRun = null, parked = null, opStart = 0;
+// `following` is what stops a second poller: every visit to this tab re-runs
+// operator(), and without it each visit started another loop on the same run.
+// `opRun` is cleared the moment a run settles, because the panel belongs to the
+// job in the heading, and the heading can change while you are away.
+let opRun = null, parked = null, opStart = 0, following = false;
 
 function operator() {
   const cap = watchable();
@@ -251,8 +255,8 @@ function operator() {
   if (cap) $('#go').onclick = () => runWatched(cap);
   // A run left parked while you were on another tab is still parked, and the
   // browser is still sitting on its screen. Pick that one back up rather than
-  // offering a second Start, which would leave the first one waiting on nobody.
-  if (opRun) rejoin(opRun);
+  // offering a second Start, which would leave the first waiting on nobody.
+  if (opRun) { $('#go').disabled = true; follow(opRun); }
 }
 
 /* Only a job with a write has a step worth stopping at. */
@@ -260,14 +264,6 @@ function watchable() {
   if (picked && picked.irreversible) return picked;
   return caps.find(c => c.id === 'meridian_transfer_recorded')
       || caps.find(c => c.id.startsWith('meridian_') && c.irreversible) || null;
-}
-
-async function rejoin(runId) {
-  const run = await j(`/invocations/${runId}`);
-  if (run.status === 'completed') return settled(runId, run);
-  $('#go').disabled = true;
-  const r = await watch(runId);
-  if (r) settled(runId, r);
 }
 
 async function runWatched(cap) {
@@ -281,13 +277,22 @@ async function runWatched(cap) {
     { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ args: argsFor(cap), wait_seconds: 0, operator: true }) });
   opRun = started.run_id;
-  const r = await watch(opRun);
-  if (r) settled(opRun, r);
+  follow(opRun);
+}
+
+/* One poller per run, however many times the tab is opened. */
+async function follow(runId) {
+  if (following) return;
+  following = true;
+  try {
+    const r = await watch(runId);
+    if (r) await settled(runId, r);
+  } finally {
+    following = false;
+  }
 }
 
 async function settled(runId, r) {
-  if (opRun !== runId || !$('#ops')) return;
-  $('#go').disabled = false;
   const ev = await j(`/invocations/${runId}/events`);
   const steps = ev.events.filter(e => e.event === 'step');
   const res = r.result || {};
@@ -296,6 +301,12 @@ async function settled(runId, r) {
     ? (res.outcome === 'success' ? ' &mdash; parked once, a person said yes'
                                  : ' &mdash; parked once, and nothing was written')
     : '';
+  const secs = ((Date.now() - opStart) / 1000).toFixed(1);
+  // Done with this run before painting: a later visit to the tab must not
+  // repaint it, because by then the heading may name a different job.
+  opRun = null;
+  if (!$('#ops')) return;
+  $('#go').disabled = false;
   $('#ops').innerHTML =
     `<div class="box"><span class="${v[0]}">${v[1]}</span>${note}` +
     (res.message ? `<br><span class="dim">${esc(res.message)}</span>` : '') +
@@ -303,16 +314,12 @@ async function settled(runId, r) {
     (Object.entries(res.outputs || {}).map(([k, val]) =>
       `<br>${esc(OUT[k] || k)}: <b>${esc(val)}</b>`).join('')) + '</div>' +
     steps.map(st => `<div class="turn">${esc(said(st))}</div>`).join('');
-  $('#opfoot').innerHTML = ` <b>0 model turns</b> &middot; ` +
-    `${((Date.now() - opStart) / 1000).toFixed(1)}s`;
+  $('#opfoot').innerHTML = ` <b>0 model turns</b> &middot; ${secs}s`;
 }
 
 /* A run can stop and ask for a person. Poll it, show the packet when it does,
    and let whoever is watching answer -- the browser is still sitting on the
-   screen it stopped at, which is the whole reason to stop rather than fail.
-
-   Returns null when a newer run has taken the panel, so an abandoned poller
-   stops instead of painting its stale packet over the live one. */
+   screen it stopped at, which is the whole reason to stop rather than fail. */
 async function watch(runId) {
   for (;;) {
     await sleep(700);
@@ -337,7 +344,8 @@ function packet(runId, p) {
         Nothing has been written.<br>
         Answer here. Clicking in the browser window does not reach the run, and
         doing the step by hand means resume is refused &mdash; otherwise the
-        engine would do it a second time.</span><br><br>
+        engine would do it a second time. Closing the window ends the run.
+        </span><br><br>
       <button class="btn" id="ok">Resume</button>
       <button class="btn" id="no">Abort</button>
       &nbsp;<span class="dim" id="left"></span></div>`;
