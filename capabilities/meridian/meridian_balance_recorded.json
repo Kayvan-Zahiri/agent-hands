@@ -65,7 +65,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Operator ID:",
             "frame": "main",
             "durability": 0.85,
@@ -123,7 +123,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Password:",
             "frame": "main",
             "durability": 0.85,
@@ -181,7 +181,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Branch:",
             "frame": "main",
             "durability": 0.85,
@@ -269,7 +269,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
@@ -327,7 +327,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
@@ -355,7 +355,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Value:",
             "frame": "main",
             "durability": 0.85,
@@ -443,7 +443,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
@@ -501,7 +501,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
@@ -559,7 +559,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,

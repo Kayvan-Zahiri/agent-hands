@@ -496,7 +496,7 @@ def _probe_step(kind: ActionKind, targets: Any, call: Any, risk: Risk) -> Any:
 
 def _caption(targets: Any) -> str | None:
     for candidate in targets.candidates:
-        if candidate.strategy.value == "labelled_field":
+        if candidate.strategy.value == "labeled_field":
             return repr(candidate.value)
     return None
 

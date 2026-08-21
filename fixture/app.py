@@ -12,7 +12,7 @@ What makes it hostile, and why each one matters:
   core-banking screens from the 2000s are built exactly this way.
 - **Table-based layout.** Forms are laid out in nested tables with no <label>
   elements; a field's caption is a <td> sitting to its left. So "the input
-  labelled Member ID" has to be derived from geometry and reading order rather
+  labeled Member ID" has to be derived from geometry and reading order rather
   than read off an attribute.
 - **No test IDs, no stable classes.** Ids are server-generated and change per
   render (`ctl00_r3_c1`), which is what real ASP.NET-era apps emit. Anything

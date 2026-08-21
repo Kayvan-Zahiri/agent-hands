@@ -43,10 +43,28 @@ class Strategy(str, enum.Enum):
 
     ROLE_NAME = "role_name"                # button "Search"
     ROLE_NAME_IN_REGION = "role_name_in_region"   # ...inside the "Members" frame
-    LABELLED_FIELD = "labelled_field"      # the input whose label is "Member ID"
+    LABELED_FIELD = "labeled_field"        # the input whose label is "Member ID"
     NTH_OF_ROLE = "nth_of_role"            # 3rd row of the results table
     DOM_PATH = "dom_path"                  # last resort before coordinates
     POINT = "point"                        # screenshot coordinates, flagged brittle
+
+    @classmethod
+    def _missing_(cls, value: object) -> "Strategy | None":
+        """Accept the double-l spelling this used to be written with.
+
+        Every artifact recorded before the house style was applied spells it
+        with two l's, and so does every evidence file ever written. Neither can
+        be rewritten -- an artifact may live outside this repo, and evidence is
+        a record of what happened, not a document to be edited. Renaming the
+        member without this turns "read an old recording" into a crash on load.
+
+        Written by joining the halves so a future search-and-replace over the
+        American spelling cannot silently delete the compatibility it provides.
+        That is not hypothetical: the rename that introduced this ate it.
+        """
+        if value == "label" + "led_field":
+            return cls.LABELED_FIELD
+        return None
 
 
 @dataclass(frozen=True)

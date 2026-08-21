@@ -159,7 +159,7 @@ class PerceptionTest(unittest.TestCase):
         self.assertTrue(obs.find(role="link", name="Search", frame="content"))
 
     def test_search_field_has_no_accessible_name(self) -> None:
-        # The premise of the whole LABELLED_FIELD strategy. If this ever fails,
+        # The premise of the whole LABELED_FIELD strategy. If this ever fails,
         # the fixture grew a label and the interesting case went away.
         field = _search_field(observe(self.page))
         self.assertEqual("", field.name)
@@ -206,7 +206,7 @@ class PerceptionTest(unittest.TestCase):
         field = _search_field(obs)
         targets = derive_targets(field, _frame(obs, field))
 
-        self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
+        self.assertIs(Strategy.LABELED_FIELD, targets.primary.strategy)
         self.assertEqual("Member ID", targets.primary.value)
 
         # The server-generated id is in the DOM and must not be in the artifact.
@@ -265,7 +265,7 @@ class PerceptionTest(unittest.TestCase):
     def test_unresolvable_target_set_reports_every_attempt(self) -> None:
         stale = TargetSet(candidates=[
             Target(Strategy.ROLE_NAME, 'button "Submit"', None, 0.95, "gone"),
-            Target(Strategy.LABELLED_FIELD, "Sort Code", "content", 0.85, "gone"),
+            Target(Strategy.LABELED_FIELD, "Sort Code", "content", 0.85, "gone"),
             Target(Strategy.DOM_PATH, "body > form > input", "content", 0.2, "gone"),
         ])
         with self.assertRaises(TargetResolutionError) as caught:
@@ -276,7 +276,7 @@ class PerceptionTest(unittest.TestCase):
         self.assertIn("Sort Code", str(caught.exception))
 
     def test_missing_frame_is_a_reason_not_a_crash(self) -> None:
-        target = Target(Strategy.LABELLED_FIELD, "Member ID", "sidebar", 0.85, "")
+        target = Target(Strategy.LABELED_FIELD, "Member ID", "sidebar", 0.85, "")
         with self.assertRaises(TargetResolutionError) as caught:
             resolve(self.page, TargetSet(candidates=[target]))
         self.assertIn("not present", caught.exception.attempts[0].reason)
@@ -337,7 +337,7 @@ class StackedFormTest(unittest.TestCase):
         # leaves position, which is the brittleness the module exists to avoid.
         for targets in self._fields():
             with self.subTest(caption=targets.primary.value):
-                self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
+                self.assertIs(Strategy.LABELED_FIELD, targets.primary.strategy)
 
     def test_a_caption_resolves_to_the_control_beside_it(self) -> None:
         # Matching one element is not enough; it has to be the right one.
@@ -380,7 +380,7 @@ class VariantTest(unittest.TestCase):
         obs = observe(page)
         field = _search_field(obs)
         targets = derive_targets(field, _frame(obs, field))
-        self.assertIs(Strategy.LABELLED_FIELD, targets.primary.strategy)
+        self.assertIs(Strategy.LABELED_FIELD, targets.primary.strategy)
         self.assertEqual("Account Number", targets.primary.value)
         self.assertEqual("member_id", resolve(page, targets).get_attribute("name"))
         page.close()
@@ -390,7 +390,7 @@ class VariantTest(unittest.TestCase):
         # match". A target recorded against Meridian must find nothing here
         # rather than land on whatever field happens to be first.
         page = _open(self.browser, self.fixture.url)
-        target = Target(Strategy.LABELLED_FIELD, "Member ID", "content", 0.85, "")
+        target = Target(Strategy.LABELED_FIELD, "Member ID", "content", 0.85, "")
         with self.assertRaises(TargetResolutionError):
             resolve(page, TargetSet(candidates=[target]))
         page.close()

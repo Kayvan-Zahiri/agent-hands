@@ -82,7 +82,7 @@ def _captioned(pg) -> tuple[Observation, dict[str, TargetSet]]:
         if frame is None:
             continue
         targets = derive_targets(node, frame)
-        if targets.primary.strategy is Strategy.LABELLED_FIELD:
+        if targets.primary.strategy is Strategy.LABELED_FIELD:
             found[targets.primary.value] = targets
     return obs, found
 
@@ -156,10 +156,10 @@ def _capability(name: str, description: str, steps: list[Step],
     )
 
 
-def _labelled_cell(caption: str) -> TargetSet:
+def _labeled_cell(caption: str) -> TargetSet:
     """The cell next to the cell that reads `caption`.
 
-    The same idea `LABELLED_FIELD` uses for form fields, applied to a value. The
+    The same idea `LABELED_FIELD` uses for form fields, applied to a value. The
     engine only knows how to do this for things you can type into, which is the
     gap the report names first; until it does, an artifact can carry the xpath.
     """
@@ -206,7 +206,7 @@ def build(pg) -> list[Capability]:
                 durability=0.95, note="the result row's own link")]),
                 risk=Risk.REVERSIBLE,
                 checkpoint=Checkpoint("text_present", "Member No.:")),
-            Step(10, ActionKind.READ, target=_labelled_cell("Name:"), extracts="member_name",
+            Step(10, ActionKind.READ, target=_labeled_cell("Name:"), extracts="member_name",
                  risk=Risk.SAFE),
         ],
         [Param("search_by", "string", True, "'number' or 'name'", "number"),
@@ -220,7 +220,7 @@ def build(pg) -> list[Capability]:
         signon + [
             Step(5, ActionKind.NAVIGATE, url=HOST + "/members/{member_id}", risk=Risk.SAFE,
                  checkpoint=Checkpoint("text_present", "Member No.:")),
-            Step(6, ActionKind.READ, target=_labelled_cell("Name:"), extracts="member_name",
+            Step(6, ActionKind.READ, target=_labeled_cell("Name:"), extracts="member_name",
                  risk=Risk.SAFE),
             Step(7, ActionKind.READ, target=_row_cell(3), extracts="balance", risk=Risk.SAFE),
             Step(8, ActionKind.READ, target=_row_cell(4), extracts="status", risk=Risk.SAFE,
@@ -262,7 +262,7 @@ def build(pg) -> list[Capability]:
                 durability=0.95, note="on the confirmation screen")]),
                 risk=Risk.IRREVERSIBLE,
                 checkpoint=Checkpoint("text_present", "TRANSACTION COMPLETE")),
-            Step(12, ActionKind.READ, target=_labelled_cell("Confirmation:"),
+            Step(12, ActionKind.READ, target=_labeled_cell("Confirmation:"),
                  extracts="confirmation", risk=Risk.SAFE),
         ],
         [Param("member_id", "string", True, "member number", DEMO_MEMBER),
@@ -292,9 +292,9 @@ def build(pg) -> list[Capability]:
                 durability=0.95, note="on the confirmation screen")]),
                 risk=Risk.IRREVERSIBLE,
                 checkpoint=Checkpoint("text_present", "NEW SHARE ESTABLISHED")),
-            Step(10, ActionKind.READ, target=_labelled_cell("Confirmation:"),
+            Step(10, ActionKind.READ, target=_labeled_cell("Confirmation:"),
                  extracts="confirmation", risk=Risk.SAFE),
-            Step(11, ActionKind.READ, target=_labelled_cell("New Share ID:"),
+            Step(11, ActionKind.READ, target=_labeled_cell("New Share ID:"),
                  extracts="new_share_id", risk=Risk.SAFE),
         ],
         [Param("member_id", "string", True, "member number", DEMO_MEMBER),
@@ -386,7 +386,7 @@ def main() -> int:
         path = save(cap, OUT / f"{cap.name}.json")
         by_caption = sum(
             1 for s in cap.steps if s.target
-            and s.target.primary.strategy is Strategy.LABELLED_FIELD)
+            and s.target.primary.strategy is Strategy.LABELED_FIELD)
         print(f"  {cap.name:28} {len(cap.steps):2d} steps, "
               f"{by_caption} addressed by caption -> {path.name}")
     return 0

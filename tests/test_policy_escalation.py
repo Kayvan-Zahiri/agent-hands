@@ -630,7 +630,7 @@ class TestRecordedSecrets(unittest.TestCase):
         from agent_hands.recorder import RecordedAction, record
 
         def target(value: str) -> TargetSet:
-            return TargetSet(candidates=[Target(Strategy.LABELLED_FIELD, value, None, 0.85, "")])
+            return TargetSet(candidates=[Target(Strategy.LABELED_FIELD, value, None, 0.85, "")])
 
         trajectory = [
             RecordedAction(action=ActionKind.TYPE, targets=target("Operator ID:"),
@@ -1167,3 +1167,41 @@ class TestCheckpointMatching(unittest.TestCase):
     def test_a_pattern_that_would_not_compile_raw_is_fine(self) -> None:
         # A screen saying "Balance (available)" must not be a syntax error.
         self.assertIsNotNone(self.matcher("Balance (available)").search("Balance (available)"))
+
+
+class TestOldSpellingStillLoads(unittest.TestCase):
+    """An artifact written before the house style was applied must still run.
+
+    The double-l spelling is in every recording made up to that point, and in
+    every evidence file ever written. Evidence is a record of what happened, not a
+    document to be edited, and an artifact may sit in somebody else's repo.
+    """
+
+    def test_both_spellings_resolve_to_one_strategy(self) -> None:
+        self.assertIs(Strategy.LABELED_FIELD, Strategy("labeled_field"))
+        self.assertIs(Strategy.LABELED_FIELD, Strategy("label" + "led_field"))
+
+    def test_a_spelling_nobody_ever_used_is_still_an_error(self) -> None:
+        with self.assertRaises(ValueError):
+            Strategy("labelised_field")
+
+    def test_an_artifact_in_the_old_spelling_loads_and_replays(self) -> None:
+        import json
+        from agent_hands.recorder import load, save
+        source = Path("capabilities/member_lookup.json")
+        blob = json.loads(source.read_text())
+        # write it back the way it used to be spelled
+        old = json.dumps(blob).replace("labeled_field", "label" + "led_field")
+        with tempfile.TemporaryDirectory() as tmp:
+            aged = Path(tmp) / "aged.json"
+            aged.write_text(old)
+
+            cap = load(aged)
+
+            found = [c.strategy for s in cap.steps
+                     for c in ((s.target.candidates if s.target else []))]
+            self.assertIn(Strategy.LABELED_FIELD, found)
+            # and it round-trips out in the current spelling
+            save(cap, aged)
+            self.assertIn("labeled_field", aged.read_text())
+            self.assertNotIn("label" + "led_field", aged.read_text())

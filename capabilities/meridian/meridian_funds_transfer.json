@@ -133,7 +133,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Operator ID:",
             "frame": "main",
             "durability": 0.85,
@@ -191,7 +191,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Password:",
             "frame": "main",
             "durability": 0.85,
@@ -249,7 +249,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Branch:",
             "frame": "main",
             "durability": 0.85,
@@ -337,7 +337,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
@@ -382,7 +382,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "From Share:",
             "frame": "main",
             "durability": 0.85,
@@ -440,7 +440,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "To Share:",
             "frame": "main",
             "durability": 0.85,
@@ -498,7 +498,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Amount:",
             "frame": "main",
             "durability": 0.85,
@@ -556,7 +556,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Memo:",
             "frame": "main",
             "durability": 0.85,
@@ -644,7 +644,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,

@@ -149,7 +149,7 @@ const OUT = { member_name:'Name', balance:'Balance', savings_balance:'Balance', 
 const VERDICT = { success:['ok','COMPLETED'], business_outcome:['warn','THE SYSTEM ANSWERED'],
   failure:['err','STOPPED'], running:['dim','RUNNING'], completed:['dim','FINISHED'] };
 const HOW = { role_name:['by its name on screen',1], role_name_in_region:['by its name on screen',1],
-  labelled_field:['by the label beside it',1], nth_of_role:['by counting — fragile',0],
+  labeled_field:['by the label beside it',1], nth_of_role:['by counting — fragile',0],
   dom_path:['by page structure — fragile',0] };
 
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));

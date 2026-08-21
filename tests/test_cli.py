@@ -32,14 +32,14 @@ class ShowTest(unittest.TestCase):
 
     def test_default_view_carries_the_targeting(self) -> None:
         out = run("show", str(ARTIFACT)).stdout
-        self.assertIn("labelled_field", out)
+        self.assertIn("labeled_field", out)
         self.assertIn("dom_path", out)
         # the rejected ones too, with their reason
         self.assertIn("control has no accessible name", out)
 
     def test_brief_drops_the_targeting(self) -> None:
         out = run("show", "--brief", str(ARTIFACT)).stdout
-        for jargon in ("labelled_field", "role_name", "dom_path", "nth_of_role"):
+        for jargon in ("labeled_field", "role_name", "dom_path", "nth_of_role"):
             self.assertNotIn(jargon, out)
 
     def test_brief_keeps_what_a_signer_needs(self) -> None:

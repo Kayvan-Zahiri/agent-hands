@@ -18,8 +18,8 @@ Three functions, in the order they are used:
 The hard case this layer exists for is the fixture's search field. It has no
 <label>, no name, no stable id, and no accessible name at all -- its caption is a
 <td> sitting to its left in a layout table. The accessibility tree alone cannot
-name it, so `LABELLED_FIELD` recovers the label from table geometry. See
-`_labelled_field`.
+name it, so `LABELED_FIELD` recovers the label from table geometry. See
+`_labeled_field`.
 
 The handles in an Observation (`Node.ref`) are good only for that observation.
 The durable handle is the TargetSet, which is why one gets recorded.
@@ -357,7 +357,7 @@ _Proposal = tuple[Target | None, str]
 _REASON_STRATEGY = {
     "role_name": Strategy.ROLE_NAME,
     "role_name_in_region": Strategy.ROLE_NAME_IN_REGION,
-    "labelled_field": Strategy.LABELLED_FIELD,
+    "labeled_field": Strategy.LABELED_FIELD,
     "nth_of_role": Strategy.NTH_OF_ROLE,
     "dom_path": Strategy.DOM_PATH,
 }
@@ -380,7 +380,7 @@ def derive_targets(node: Node, frame: Frame) -> TargetSet:
     proposals = [
         _role_name(node),
         _role_name_in_region(node),
-        _labelled_field(node, element),
+        _labeled_field(node, element),
         _nth_of_role(node, frame, element),
         _dom_path(node, element),
     ]
@@ -461,7 +461,7 @@ def _role_name_in_region(node: Node) -> _Proposal:
     ), ""
 
 
-def _labelled_field(node: Node, element: Any) -> _Proposal:
+def _labeled_field(node: Node, element: Any) -> _Proposal:
     """The input whose caption sits in the cell to its left.
 
     This is the strategy the fixture exists to force. The search field has no
@@ -482,13 +482,13 @@ def _labelled_field(node: Node, element: Any) -> _Proposal:
     means.
     """
     if node.role not in _FIELD_ROLES:
-        return None, f"labelled_field: role {node.role!r} is not a form field"
+        return None, f"labeled_field: role {node.role!r} is not a form field"
     found = element.evaluate(_JS_CAPTION)
     if not found:
-        return None, "labelled_field: no caption cell to the left of or above the field"
+        return None, "labeled_field: no caption cell to the left of or above the field"
     caption, direction = found["caption"], found["direction"]
     return Target(
-        strategy=Strategy.LABELLED_FIELD,
+        strategy=Strategy.LABELED_FIELD,
         value=caption,
         frame=node.frame,
         # Below role+name, because the browser checks a real accessible name.
@@ -774,7 +774,7 @@ def locator_in(frame: Frame, target: Target) -> Locator:
     if target.strategy in (Strategy.ROLE_NAME, Strategy.ROLE_NAME_IN_REGION):
         role, name = _parse_role_value(target.value)
         return frame.get_by_role(role, name=name, exact=True)  # type: ignore[arg-type]
-    if target.strategy is Strategy.LABELLED_FIELD:
+    if target.strategy is Strategy.LABELED_FIELD:
         return frame.locator(f"xpath={_caption_xpath(target.value)}")
     if target.strategy is Strategy.NTH_OF_ROLE:
         role, index = _parse_nth_value(target.value)

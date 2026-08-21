@@ -51,7 +51,7 @@
       "target": {
         "candidates": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "Member ID",
             "frame": "content",
             "durability": 0.85,
@@ -139,7 +139,7 @@
         ],
         "rejected": [
           {
-            "strategy": "labelled_field",
+            "strategy": "labeled_field",
             "value": "",
             "frame": null,
             "durability": 0.0,
