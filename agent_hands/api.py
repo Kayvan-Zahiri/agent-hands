@@ -30,6 +30,7 @@ import json
 import queue
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -375,7 +376,7 @@ class Invoker:
             # With this the surface gate checks where the browser actually is on
             # every step, instead of only where the artifact said it would be.
             policy.url_provider = lambda: page.url
-            escalator = Escalator(self._console(run), evidence=evidence)
+            escalator = Escalator(self._console(run, page), evidence=evidence)
             # The caller's confirmation first; a person only if there is not one.
             policy.approver = _Approvers(approver, escalator)
 
@@ -408,7 +409,7 @@ class Invoker:
         host = urlparse(url).netloc
         return Policy(apps=(AppAllowance(host=host),), name=host)
 
-    def _console(self, run: Run | None = None) -> Any:
+    def _console(self, run: Run | None = None, page: Any = None) -> Any:
         """Who answers when the engine needs a person.
 
         `OperatorConsole` is a two-method protocol, and everything above it --
@@ -430,7 +431,7 @@ class Invoker:
         # outright: an unattended deployment runs headless and cannot be asked
         # to hold a browser open by any caller.
         if run is not None and self.headed and (self.operator or run.watched):
-            return QueueConsole(run)
+            return QueueConsole(run, page=page)
         return ScriptedConsole(decision=OperatorDecision.ABORT,
                                note="no operator console is attached to the API",
                                approves=False)
@@ -550,9 +551,37 @@ class QueueConsole:
     one does.
     """
 
-    def __init__(self, run: Run, timeout_seconds: float = 180.0) -> None:
+    def __init__(self, run: Run, timeout_seconds: float = 180.0,
+                 page: Any = None) -> None:
         self.run = run
         self.timeout = timeout_seconds
+        # The window the person is looking at. Closing it is an answer -- see
+        # `_gone` -- and without it a run sits on a dead page until the deadline,
+        # offering a Resume that could never have worked.
+        self.page = page
+
+    def _gone(self) -> bool:
+        """Has the window the person was looking at gone away.
+
+        `is_closed()` alone is not enough. It reads a flag playwright sets when
+        a close event arrives, and events only arrive while something drives the
+        sync API's loop -- which this thread, parked on a queue, does not do. So
+        the check has to be a round trip that fails when there is nothing at the
+        other end.
+
+        Only a closed or disconnected target counts. A page that is merely busy,
+        or navigating because the operator is looking around, is still a page.
+        """
+        if self.page is None:
+            return False
+        try:
+            if self.page.is_closed():
+                return True
+            self.page.evaluate("1")
+            return False
+        except Exception as exc:
+            text = str(exc).lower()
+            return any(w in text for w in ("closed", "disconnected", "crashed"))
 
     def ask(self, request: InterventionRequest) -> Response:
         # An answer that arrived before its question is not an answer to it.
@@ -568,10 +597,23 @@ class QueueConsole:
                 break
         self.run.pending = request.to_json()
         self.run.status = "awaiting_operator"
+        deadline = time.monotonic() + self.timeout
         try:
-            decision, note = self.run.answers.get(timeout=self.timeout)
-        except queue.Empty:
-            return Response(OperatorDecision.ABORT, "nobody answered in time")
+            while True:
+                try:
+                    decision, note = self.run.answers.get(timeout=0.5)
+                    break
+                except queue.Empty:
+                    # Someone who closes the window has stopped watching, and
+                    # has often done the step by hand first. Either way there is
+                    # no session left to hand back, so waiting out the rest of
+                    # the deadline only delays the same answer.
+                    if self._gone():
+                        return Response(OperatorDecision.ABORT,
+                                        "the browser window was closed")
+                    if time.monotonic() >= deadline:
+                        return Response(OperatorDecision.ABORT,
+                                        "nobody answered in time")
         finally:
             self.run.pending = None
             self.run.status = "running"

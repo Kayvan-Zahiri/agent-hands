@@ -448,6 +448,7 @@ class Replay:
         report recoveries it had not made.
         """
         self._last_checkpoint: Checkpoint | None = None
+        self._handoff_note: str = ""
         self._recovered: list[str] = []
         self._degraded: list[Degradation] = []
         self._reentries = 0
@@ -602,7 +603,9 @@ class Replay:
         if decision.gate == "risk" and self.escalator is not None:
             if self._handoff(cap, step, Reason.APPROVAL, decision.reason):
                 return
-            raise _Abort("declined", f"approval for step {step.index}", decision.reason)
+            raise _Abort(f"declined: {self._handoff_note}" if self._handoff_note
+                         else "declined",
+                         f"approval for step {step.index}", decision.reason)
         raise _Abort(f"policy[{decision.gate}]", decision.reason, self._url())
 
     # -- what the page came back with --------------------------------------
@@ -934,6 +937,10 @@ class Replay:
         # only resume and abort. Skip-this-step and completed-by-hand are not
         # implemented: an option that silently quits is worse than no option.
         if record.decision is not OperatorDecision.RESUME:
+            # Kept so the run can say which of these it was: a person aborting,
+            # nobody answering, or the window being closed. "declined" on its
+            # own sends a reader to the log to find out which.
+            self._handoff_note = record.note
             return False
         try:
             self.escalator.verify_resume(

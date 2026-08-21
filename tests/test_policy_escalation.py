@@ -1070,3 +1070,67 @@ class TestAHandoffNeedsAWindow(unittest.TestCase):
         self.assertEqual("QueueConsole", self.console(headed=True, watched=True))
         self.assertEqual("QueueConsole",
                          self.console(headed=True, watched=False, operator=True))
+
+
+class TestClosingTheWindowIsAnAnswer(unittest.TestCase):
+    """Somebody who closes the browser has stopped watching.
+
+    The console cannot see the browser; the run can. Without this, closing the
+    window leaves the run parked on a dead page for the rest of the deadline,
+    offering a Resume that could never have worked -- and if the person did the
+    step by hand first, that Resume would have done it a second time.
+    """
+
+    class Window:
+        def __init__(self, closed: bool = False) -> None:
+            self._closed = closed
+
+        def is_closed(self) -> bool:
+            return self._closed
+
+    class Wreck(Window):
+        def is_closed(self) -> bool:
+            raise RuntimeError("target page, context or browser has been closed")
+
+    def console(self, page: Any) -> tuple[Any, Any]:
+        from agent_hands.api import QueueConsole, Run
+        run = Run(run_id="r1", capability="c", args={})
+        # Long deadline on purpose: if the run ends it is because the window
+        # closed, not because it timed out.
+        return QueueConsole(run, timeout_seconds=30.0, page=page), run
+
+    def packet(self) -> InterventionRequest:
+        return InterventionRequest(id="h1", reason=Reason.APPROVAL, capability="c",
+                                   step_index=13, question="post this transfer?")
+
+    def test_a_closed_window_ends_the_run_without_waiting_it_out(self) -> None:
+        page = self.Window()
+        console, run = self.console(page)
+        import threading
+        threading.Timer(0.05, lambda: setattr(page, "_closed", True)).start()
+
+        started = time.monotonic()
+        reply = console.ask(self.packet())
+
+        self.assertIs(OperatorDecision.ABORT, reply.decision)
+        self.assertIn("closed", reply.note)
+        self.assertLess(time.monotonic() - started, 5.0)
+        self.assertIsNone(run.pending)
+
+    def test_a_window_that_cannot_be_asked_counts_as_gone(self) -> None:
+        console, _ = self.console(self.Wreck())
+        self.assertIn("closed", console.ask(self.packet()).note)
+
+    def test_an_open_window_is_still_waited_on(self) -> None:
+        import threading
+        console, run = self.console(self.Window())
+        threading.Timer(0.05, lambda: run.answers.put(("resume", "looked at it"))).start()
+        self.assertIs(OperatorDecision.RESUME, console.ask(self.packet()).decision)
+
+    def test_with_no_page_nothing_changes(self) -> None:
+        # Every other caller -- the CLI, the tests above -- passes no page.
+        from agent_hands.api import QueueConsole, Run
+        console = QueueConsole(Run(run_id="r", capability="c", args={}),
+                               timeout_seconds=0.2)
+        self.assertIs(OperatorDecision.ABORT, console.ask(self.packet()).decision)
+        self.assertIn("in time", console.ask(self.packet()).note)
