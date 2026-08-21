@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import queue
 import re
 import threading
 from dataclasses import dataclass, field
@@ -36,7 +37,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .escalation import Decision as OperatorDecision
-from .escalation import Escalator, ScriptedConsole
+from .escalation import Escalator, InterventionRequest, Response, ScriptedConsole
 from .evidence import DEFAULT_ROOT, Evidence
 from .policy import AppAllowance, Policy
 from .recorder import load
@@ -235,10 +236,13 @@ class Run:
     run_id: str
     capability: str
     args: dict[str, Any]
-    status: str = "running"          # running | completed
+    status: str = "running"          # running | awaiting_operator | completed
     result: dict[str, Any] | None = None
     error: str | None = None
     done: threading.Event = field(default_factory=threading.Event)
+    # Set while the run is parked on a person, cleared the moment they answer.
+    pending: dict[str, Any] | None = None
+    answers: "queue.Queue[tuple[str, str]]" = field(default_factory=queue.Queue)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -247,6 +251,7 @@ class Run:
             "status": self.status,
             "result": self.result,
             "error": self.error,
+            "pending": self.pending,
         }
 
 
@@ -255,7 +260,11 @@ class Invoker:
 
     def __init__(self, catalog: Catalog, *, headed: bool = False,
                  evidence_root: Path | str | None = None,
-                 confirmable: frozenset[str] = frozenset()) -> None:
+                 confirmable: frozenset[str] = frozenset(),
+                 operator: bool = False) -> None:
+        # Off by default: without it an escalation aborts, which is what an
+        # unattended run should do and what every existing caller expects.
+        self.operator = operator
         self.catalog = catalog
         self.headed = headed
         self.evidence_root = evidence_root
@@ -356,7 +365,7 @@ class Invoker:
             # With this the surface gate checks where the browser actually is on
             # every step, instead of only where the artifact said it would be.
             policy.url_provider = lambda: page.url
-            escalator = Escalator(self._console(), evidence=evidence)
+            escalator = Escalator(self._console(run), evidence=evidence)
             # The caller's confirmation first; a person only if there is not one.
             policy.approver = _Approvers(approver, escalator)
 
@@ -389,17 +398,19 @@ class Invoker:
         host = urlparse(url).netloc
         return Policy(apps=(AppAllowance(host=host),), name=host)
 
-    def _console(self) -> Any:
-        """The operator console, stubbed at the seam it was built for.
+    def _console(self, run: Run | None = None) -> Any:
+        """Who answers when the engine needs a person.
 
         `OperatorConsole` is a two-method protocol, and everything above it --
         the ownership state machine, the intervention packet, the re-check on
-        resume -- is real. A queue-backed console that parks a run and lets a
-        person answer over HTTP swaps in here and changes nothing else. Until
-        that exists, the honest answer is the one an unattended run gives: stop,
-        and say a person was needed. Approving automatically would wave through
-        exactly the irreversible steps the gate is for.
+        resume -- is real, so swapping who answers changes nothing else. With
+        `--operator` that is `QueueConsole`: the run parks and a person answers
+        over HTTP. Without it the answer is the one an unattended run should
+        give: stop, and say a person was needed. Approving automatically would
+        wave through exactly the irreversible steps the gate is for.
         """
+        if self.operator and run is not None:
+            return QueueConsole(run)
         return ScriptedConsole(decision=OperatorDecision.ABORT,
                                note="no operator console is attached to the API",
                                approves=False)
@@ -501,6 +512,48 @@ def _recordings(inv: "Invoker", limit: int = 20) -> list[dict[str, Any]]:
         if len(found) >= limit:
             break
     return found
+
+
+class QueueConsole:
+    """An operator who is somewhere else, reachable over HTTP.
+
+    `OperatorConsole` is two methods precisely so the terminal version and a
+    review queue can stand in for each other, and this is the second one. It
+    parks the run on the person and blocks; nothing above it changes, because
+    everything above it -- who owns the page, the intervention packet, the
+    re-check before control comes back -- was already real.
+
+    Blocking is the point: the browser stays open on the screen the run stopped
+    at, which is the whole reason to escalate rather than fail. It is also why
+    there is a deadline. A run waiting on somebody who went home must end, and
+    end the safe way, so an unanswered handoff aborts exactly as an unattended
+    one does.
+    """
+
+    def __init__(self, run: Run, timeout_seconds: float = 180.0) -> None:
+        self.run = run
+        self.timeout = timeout_seconds
+
+    def ask(self, request: InterventionRequest) -> Response:
+        self.run.pending = request.to_json()
+        self.run.status = "awaiting_operator"
+        try:
+            decision, note = self.run.answers.get(timeout=self.timeout)
+        except queue.Empty:
+            return Response(OperatorDecision.ABORT, "nobody answered in time")
+        finally:
+            self.run.pending = None
+            self.run.status = "running"
+        try:
+            return Response(OperatorDecision(decision), note)
+        except ValueError:
+            return Response(OperatorDecision.ABORT, f"unknown decision {decision!r}")
+
+    def approve(self, *, capability: str, step: Any) -> bool:
+        # Declining here is not a refusal, it is a redirect: the engine turns a
+        # declined risk gate into a handoff, which arrives at `ask` above with a
+        # full packet and a screenshot. One way of parking a run, not two.
+        return False
 
 
 class _AlwaysWatching:
@@ -616,10 +669,27 @@ class _Handler(BaseHTTPRequestHandler):
         inv: Invoker = self.server.invoker                   # type: ignore[attr-defined]
         path = urlparse(self.path).path.rstrip("/")
         parts = path.split("/")
-        if path != "/recordings" and (
-                len(parts) != 4 or parts[1] != "capabilities"
-                or parts[3] not in ("invocations", "approval")):
+        if path != "/recordings" and not (
+                len(parts) == 4
+                and ((parts[1] == "capabilities" and parts[3] in ("invocations", "approval"))
+                     or (parts[1] == "invocations" and parts[3] == "decision"))):
             return self._send(404, {"error": f"no route {path!r}"})
+
+        if len(parts) == 4 and parts[1] == "invocations" and parts[3] == "decision":
+            run = inv.runs.get(parts[2])
+            if run is None:
+                return self._send(404, {"error": "no such run"})
+            if run.pending is None:
+                return self._send(409, {"error": "that run is not waiting on anybody"})
+            try:
+                body = self._body()
+            except ValueError as exc:
+                return self._send(400, {"error": str(exc)})
+            decision = str(body.get("decision", "")).lower()
+            if decision not in ("resume", "abort"):
+                return self._send(400, {"error": "decision must be resume or abort"})
+            run.answers.put((decision, str(body.get("note", "answered in the console"))))
+            return self._send(200, {"answered": decision, "run_id": run.run_id})
 
         if len(parts) == 4 and parts[1] == "capabilities" and parts[3] == "approval":
             cap = inv.catalog.capabilities.get(parts[2])
@@ -698,11 +768,12 @@ class _Handler(BaseHTTPRequestHandler):
 
 def serve(port: int = 8080, *, capabilities: Path | str = "capabilities",
           headed: bool = False, evidence_root: Path | str | None = None,
-          confirmable: frozenset[str] = frozenset()) -> None:
+          confirmable: frozenset[str] = frozenset(), operator: bool = False) -> None:
     catalog = Catalog.open(capabilities)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     httpd.invoker = Invoker(catalog, headed=headed,          # type: ignore[attr-defined]
-                            evidence_root=evidence_root, confirmable=confirmable)
+                            evidence_root=evidence_root, confirmable=confirmable,
+                            operator=operator)
     served = ", ".join(sorted(catalog.capabilities)) or "(none)"
     print(f"capability API on http://127.0.0.1:{port}/  serving: {served}")
     for name, why in catalog.refused.items():
@@ -718,13 +789,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--headed", action="store_true",
                     help="show the browser; required for a handoff to a person")
     ap.add_argument("--evidence-root", default=None)
+    ap.add_argument("--operator", action="store_true",
+                    help="park an escalation on a person in the console instead of "
+                         "aborting; needs somebody watching")
     ap.add_argument("--confirmable", default="",
                     help="comma-separated capability ids whose irreversible steps "
                          "a caller may confirm; everything else asks a person")
     a = ap.parse_args(argv)
     serve(a.port, capabilities=a.capabilities, headed=a.headed,
           evidence_root=a.evidence_root,
-          confirmable=frozenset(n for n in a.confirmable.split(",") if n))
+          confirmable=frozenset(n for n in a.confirmable.split(",") if n),
+          operator=a.operator)
     return 0
 
 

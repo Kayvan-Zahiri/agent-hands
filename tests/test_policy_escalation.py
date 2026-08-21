@@ -837,6 +837,77 @@ class TestRiskReadsTheLabelNotTheLocation(unittest.TestCase):
                       classify_risk("click", url="https://bank.test/", label="Apply Hold"))
 
 
+class TestQueueConsole(unittest.TestCase):
+    """An operator who is somewhere else, reachable over HTTP.
+
+    `OperatorConsole` is two methods so the terminal version and a review queue
+    can stand in for each other. This is the queue one: it parks the run and
+    blocks until somebody answers, which is what keeps the browser sitting on
+    the screen the run stopped at.
+    """
+
+    def console(self) -> tuple[object, object]:
+        from agent_hands.api import QueueConsole, Run
+        run = Run(run_id="r1", capability="c", args={})
+        return QueueConsole(run, timeout_seconds=0.2), run
+
+    def packet(self) -> InterventionRequest:
+        return InterventionRequest(id="h1", reason=Reason.APPROVAL,
+                                   capability="c", step_index=11,
+                                   question="post this transfer?")
+
+    def test_the_answer_comes_back_and_the_run_is_unparked(self) -> None:
+        console, run = self.console()
+        run.answers.put(("resume", "checked it"))
+
+        reply = console.ask(self.packet())
+
+        self.assertIs(OperatorDecision.RESUME, reply.decision)
+        self.assertEqual("checked it", reply.note)
+        self.assertIsNone(run.pending)
+        self.assertEqual("running", run.status)
+
+    def test_while_it_waits_the_packet_is_readable(self) -> None:
+        # What the console polls for. Nobody answers, so it times out, but the
+        # packet has to have been visible on the run for it to be answerable.
+        console, run = self.console()
+        seen: list[dict[str, object] | None] = []
+
+        import threading
+        watcher = threading.Thread(target=lambda: (time.sleep(0.05),
+                                                   seen.append(run.pending),
+                                                   seen.append(run.status)))
+        watcher.start()
+        console.ask(self.packet())
+        watcher.join()
+
+        self.assertEqual("post this transfer?", seen[0]["question"])
+        self.assertEqual("awaiting_operator", seen[1])
+
+    def test_nobody_answering_ends_the_run_the_safe_way(self) -> None:
+        # A run waiting on somebody who went home must end, and end the way an
+        # unattended run does.
+        console, run = self.console()
+
+        reply = console.ask(self.packet())
+
+        self.assertIs(OperatorDecision.ABORT, reply.decision)
+        self.assertIsNone(run.pending)
+
+    def test_a_decision_nobody_recognizes_aborts(self) -> None:
+        console, run = self.console()
+        run.answers.put(("do it anyway", ""))
+
+        self.assertIs(OperatorDecision.ABORT, console.ask(self.packet()).decision)
+
+    def test_the_risk_gate_redirects_into_the_handoff(self) -> None:
+        # Declining here is not a refusal. The engine turns a declined risk gate
+        # into an escalation, which arrives at `ask` with a full packet and a
+        # screenshot -- one way of parking a run, not two.
+        console, _ = self.console()
+        self.assertFalse(console.approve(capability="c", step=None))
+
+
 class TestApprovalResumeAnchor(unittest.TestCase):
     """What an approval handoff verifies before taking the page back.
 

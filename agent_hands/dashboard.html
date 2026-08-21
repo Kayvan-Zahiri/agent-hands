@@ -124,10 +124,13 @@ function about() {
       <div><h3>EVERY TIME SINCE &mdash; NO AI</h3>
         <div class="in" id="rhs"><p class="dim">The engine repeats what it wrote.</p></div>
         <div class="foot"><button class="btn" id="rep">Run the recording</button>
+          <label class="dim">&nbsp;<input type="checkbox" id="ask"> ask a person
+            before writing</label>
           <span id="repfoot" class="dim"></span></div></div>
     </div>`;
   $('#rec').onclick = runAI;
   $('#rep').onclick = runEngine;
+  $('#ask').onchange = e => { window.__ask = e.target.checked; };
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -169,6 +172,33 @@ async function runAI() {
   caps = (await j('/capabilities')).capabilities;
 }
 
+/* A run can stop and ask for a person. Poll it, show the packet when it does,
+   and let whoever is watching answer -- the browser is still sitting on the
+   screen it stopped at, which is the whole reason to stop rather than fail. */
+async function watch(runId) {
+  for (;;) {
+    await new Promise(r => setTimeout(r, 700));
+    const run = await j(`/invocations/${runId}`);
+    if (run.status === 'completed') return run;
+    if (run.status === 'awaiting_operator' && run.pending && !$('#ok')) {
+      const p = run.pending;
+      $('#rhs').innerHTML = `<div class="box">
+        <span class="err">NEEDS A PERSON</span> &mdash; ${esc(p.reason || '')}<br><br>
+        ${esc(p.question || '')}<br><br>
+        <span class="dim">The browser is still on the screen it stopped at.</span><br><br>
+        <button class="btn" id="ok">Resume</button>
+        <button class="btn" id="no">Abort</button></div>`;
+      const answer = d => j(`/invocations/${runId}/decision`, { method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ decision: d, note: 'answered in the console' }) });
+      $('#ok').onclick = () => { $('#rhs').innerHTML = '<p class="dim">resuming…</p>';
+                                 answer('resume'); };
+      $('#no').onclick = () => { $('#rhs').innerHTML = '<p class="dim">aborting…</p>';
+                                 answer('abort'); };
+    }
+  }
+}
+
 async function digest(a) {
   const b = await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(JSON.stringify(a, Object.keys(a).sort())));
@@ -184,11 +214,14 @@ async function runEngine() {
   $('#rhs').innerHTML = '<p class="dim">Watch the browser window…</p>';
   const t0 = Date.now();
   const args = argsFor(cap);
-  const body = { args };
-  // A write needs the caller to say so, tied to these exact values.
-  if (cap.irreversible) body.confirm = { capability: cap.id, args_digest: await digest(args) };
-  const r = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
+  const body = { args, wait_seconds: 0 };
+  // A write needs the caller to say so, tied to these exact values. Withhold it
+  // and the run stops at the write and asks a person instead.
+  if (cap.irreversible && !window.__ask)
+    body.confirm = { capability: cap.id, args_digest: await digest(args) };
+  const started = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const r = await watch(started.run_id);
   $('#rep').disabled = false;
   const ev = await j(`/invocations/${r.run_id}/events`);
   const steps = ev.events.filter(e => e.event === 'step');
