@@ -936,7 +936,8 @@ class Replay:
         if record.decision is not OperatorDecision.RESUME:
             return False
         try:
-            self.escalator.verify_resume(self.page, self._last_checkpoint, verify)
+            self.escalator.verify_resume(
+                self.page, self._last_checkpoint or _approval_anchor(reason, request), verify)
         except ResumeRefused as exc:
             # The person left the session somewhere we cannot continue from.
             # Refusing is the whole point of checking.
@@ -1105,6 +1106,29 @@ def _excerpt(text: str, limit: int = 200) -> str:
 def _elements_excerpt(obs: Observation, limit: int = 8) -> str:
     named = [f'{n.role} "{n.name}"' for n in obs.nodes if n.name][:limit]
     return ", ".join(named)
+
+
+def _approval_anchor(reason: Reason, request: Any) -> Checkpoint | None:
+    """An approval handoff has not lost its place, so it can anchor itself.
+
+    Every other handoff happens because something went wrong, and the last
+    confirmed checkpoint is the only thing that says how far the run got. An
+    approval is not that: nothing failed, the page is exactly where the engine
+    left it, and the person is answering a question about a click that has not
+    happened yet. So the question on resume is not "where did we get to" but
+    "is the browser still on the screen I asked about", and that screen's URL
+    is known for free at the moment of asking.
+
+    Without this the approval handoff is dead code against every artifact the
+    recorder produces, because those carry a checkpoint only on the final step
+    and the step needing approval comes before it. Refusing to resume is still
+    the right answer when a person has moved the browser -- this changes which
+    question is asked, not whether one is.
+    """
+    if reason is not Reason.APPROVAL:
+        return None
+    url = getattr(request, "url", "")
+    return Checkpoint(kind="url_contains", value=url) if url else None
 
 
 def _expected(step: Step) -> str:

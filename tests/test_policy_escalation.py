@@ -835,3 +835,49 @@ class TestRiskReadsTheLabelNotTheLocation(unittest.TestCase):
         # The corollary of dropping the URL: the label now carries it alone.
         self.assertIs(Risk.IRREVERSIBLE,
                       classify_risk("click", url="https://bank.test/", label="Apply Hold"))
+
+
+class TestApprovalResumeAnchor(unittest.TestCase):
+    """What an approval handoff verifies before taking the page back.
+
+    `verify_resume` refuses without a confirmed checkpoint, because a run that
+    broke before confirming anything has no known position. An approval is not
+    that case: nothing failed, and the step needing a yes has not run yet. On
+    every artifact the recorder produces the check lands only on the final step,
+    so requiring one made the approval handoff refuse every resume -- the path
+    was demonstrable by hand and dead in practice.
+    """
+
+    REVIEW = "https://bank.test/transfer/review"
+
+    def anchor(self, reason: Reason, url: str = REVIEW) -> Checkpoint | None:
+        from agent_hands.replay import _approval_anchor
+        return _approval_anchor(reason, InterventionRequest(
+            id="h1", reason=reason, capability="c", step_index=13,
+            question="post this?", url=url))
+
+    def test_an_approval_anchors_on_the_screen_it_asked_about(self) -> None:
+        cp = self.anchor(Reason.APPROVAL)
+        assert cp is not None
+        self.assertEqual("url_contains", cp.kind)
+        self.assertEqual(self.REVIEW, cp.value)
+
+    def test_moving_the_browser_during_the_handoff_still_refuses(self) -> None:
+        # The protection the refusal exists for, kept. This changes which
+        # question is asked on resume, not whether one is.
+        cp = self.anchor(Reason.APPROVAL)
+        assert cp is not None
+        ok, seen = default_verify(FakePage(url="https://bank.test/members/search"), cp)
+        self.assertFalse(ok)
+        self.assertTrue(default_verify(FakePage(url=self.REVIEW), cp)[0])
+
+    def test_a_handoff_that_lost_its_place_gets_no_anchor(self) -> None:
+        # A checkpoint that failed, or a control nobody could find, means the
+        # run does not know where it is. Inventing an anchor there would be
+        # asserting the thing that is in doubt.
+        for reason in (Reason.CHECKPOINT, Reason.UNRESOLVED, Reason.UNEXPECTED):
+            with self.subTest(reason=reason):
+                self.assertIsNone(self.anchor(reason))
+
+    def test_no_url_means_no_anchor(self) -> None:
+        self.assertIsNone(self.anchor(Reason.APPROVAL, url=""))
