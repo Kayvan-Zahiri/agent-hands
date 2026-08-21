@@ -1134,3 +1134,36 @@ class TestClosingTheWindowIsAnAnswer(unittest.TestCase):
                                timeout_seconds=0.2)
         self.assertIs(OperatorDecision.ABORT, console.ask(self.packet()).decision)
         self.assertIn("in time", console.ask(self.packet()).note)
+
+
+class TestCheckpointMatching(unittest.TestCase):
+    """A checkpoint names a phrase on the screen. Two things that has to mean.
+
+    Case matters. `get_by_text` is case-insensitive, so a checkpoint on
+    "MAIN MENU" was satisfied by MERIDIAN's function-key bar -- "F5=Main Menu",
+    printed on every screen including the one returned when a sign-on is
+    refused. Signing on with the wrong password reported success.
+
+    And the phrase is text, not syntax: a recording writes down what it saw.
+    """
+
+    def matcher(self, value: str):
+        from agent_hands.replay import _exactly
+        return _exactly(value)
+
+    def test_the_wrong_case_does_not_match(self) -> None:
+        self.assertIsNone(self.matcher("MAIN MENU").search("F5=Main Menu"))
+        self.assertIsNotNone(self.matcher("MAIN MENU").search("MERIDIAN MAIN MENU"))
+
+    def test_it_is_a_substring_not_the_whole_of_an_element(self) -> None:
+        self.assertIsNotNone(self.matcher("CHANGES SAVED").search("  CHANGES SAVED  "))
+
+    def test_a_metacharacter_is_text(self) -> None:
+        # Unescaped, "4812.55" would match "4812X55" as well, and "Member No.:"
+        # would be a different pattern than the one the recorder wrote down.
+        self.assertIsNotNone(self.matcher("4812.55").search("$4812.55"))
+        self.assertIsNone(self.matcher("4812.55").search("4812X55"))
+
+    def test_a_pattern_that_would_not_compile_raw_is_fine(self) -> None:
+        # A screen saying "Balance (available)" must not be a syntax error.
+        self.assertIsNotNone(self.matcher("Balance (available)").search("Balance (available)"))

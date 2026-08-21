@@ -207,6 +207,23 @@ def read_capability(page: Any, on_screen: str, out: str, declared: ValueType) ->
         ])
 
 
+def checkpoint_capability(phrase: str) -> Capability:
+    """Land on the detail screen and hold on `phrase`, whatever its case.
+
+    The fixture's function-key bar reads "F7=Member Detail", so a checkpoint on
+    "MEMBER DETAIL" is satisfied by chrome rather than by the screen unless the
+    match is case-sensitive.
+    """
+    return Capability(
+        name="checkpoint_case", description="Hold on a phrase after navigating.",
+        app_id="meridian-core", entry_url=BASE + "/members/search",
+        params=[Param("member_id", "string", True, "member identifier", "12345")],
+        outputs=[], approved=True, business_rules=[],
+        steps=[Step(0, ActionKind.NAVIGATE,
+                    url=BASE + "/members/search?member_id={member_id}",
+                    risk=Risk.SAFE, checkpoint=Checkpoint("text_present", phrase))])
+
+
 def transfer_capability(page: Any) -> Capability:
     """A flow that has to choose from dropdowns, which nothing else here does.
 
@@ -396,6 +413,26 @@ def main() -> int:
             # attempt budget accounted for resumes, this reported success with
             # the corrected value never submitted.
             assert "member_id=12345" in page.url, page.url
+
+            print("\ncheckpoints are case-sensitive:")
+            _reset()
+            # The screen really does say "Member Detail", so this holds.
+            suite.check(
+                Case("a phrase the screen actually shows", Outcome.SUCCESS),
+                run(page, checkpoint_capability("Member Detail"), {"member_id": "12345"}))
+            # It does not say "MEMBER DETAIL". The function-key bar says
+            # "F7=Member Detail", and `get_by_text` is case-insensitive, so this
+            # used to hold on chrome that is printed on every screen. Against
+            # the real target that made signing on with the wrong password
+            # report success, because every artifact's step 4 waits for
+            # "MAIN MENU" and the bar reads "F5=Main Menu".
+            suite.check(
+                Case("the same phrase in the wrong case does not", Outcome.FAILURE),
+                run(page, checkpoint_capability("MEMBER DETAIL"), {"member_id": "12345"}))
+            # A phrase carrying a regex metacharacter still matches literally.
+            suite.check(
+                Case("a checkpoint with a metacharacter in it", Outcome.SUCCESS),
+                run(page, checkpoint_capability("4812.55"), {"member_id": "12345"}))
 
             print("\nreading values back:")
             _reset()

@@ -84,6 +84,17 @@ ONE_SHOT = {"dialog_lossy"}
 _fired: set[str] = set()
 
 
+# The function-key bar every terminal-era console prints on every screen. It is
+# here because its absence hid a real bug for the whole life of this fixture: a
+# `text_present` checkpoint on "MAIN MENU" was satisfied by a bar reading
+# "F5=Main Menu", so signing on with the wrong password reported success. The
+# strings differ only by case, which is the whole point of having it.
+_FKEYS = ('<table width="100%" cellpadding="2" cellspacing="0" border="0"><tr>'
+          '<td bgcolor="#003366"><font face="Verdana" size="1" color="#c8d8ea">'
+          'F3=Sign Off &nbsp; F5=Main Menu &nbsp; F7=Member Detail &nbsp; F12=Cancel'
+          '</font></td></tr></table>')
+
+
 def _page(body: str, title: str) -> bytes:
     # No viewport tag, no semantic landmarks, a table wrapper. On purpose.
     return f"""<html><head><title>{title}</title></head>
@@ -92,6 +103,7 @@ def _page(body: str, title: str) -> bytes:
 <td bgcolor="{CFG['accent']}" height="34">&nbsp;<font face="Verdana" size="2" color="#ffffff">
 <b>{CFG['brand']}</b></font></td></tr></table>
 {body}
+{_FKEYS}
 </body></html>""".encode()
 
 

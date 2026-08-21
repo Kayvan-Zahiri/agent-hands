@@ -170,9 +170,9 @@ def _hold(frame: Any, checkpoint: Checkpoint, timeout_ms: int) -> None:
         # sits at "/" the whole session, so matching on it tells you nothing.
         frame.wait_for_url(lambda url: value in url, timeout=timeout_ms)
     elif kind == "text_present":
-        frame.get_by_text(value).first.wait_for(state="visible", timeout=timeout_ms)
+        frame.get_by_text(_exactly(value)).first.wait_for(state="visible", timeout=timeout_ms)
     elif kind == "text_absent":
-        frame.get_by_text(value).first.wait_for(state="detached", timeout=timeout_ms)
+        frame.get_by_text(_exactly(value)).first.wait_for(state="detached", timeout=timeout_ms)
     elif kind == "element_present":
         # Matched by name, so a recording can say "the Search button is here"
         # without depending on markup that changes every render.
@@ -180,6 +180,28 @@ def _hold(frame: Any, checkpoint: Checkpoint, timeout_ms: int) -> None:
             raise PlaywrightTimeout(f"no control named {value!r}")
     else:
         raise PlaywrightTimeout(f"unknown checkpoint kind {kind!r}")
+
+
+def _exactly(value: str) -> "re.Pattern[str]":
+    """Case-sensitive substring matching, which is what a checkpoint means.
+
+    `get_by_text("MAIN MENU")` is case-insensitive, so it matched MERIDIAN's
+    function-key bar -- `F3=Sign Off  F5=Main Menu  F7=Member Inquiry` -- which
+    the application prints on every screen it renders, including the one it
+    returns when a sign-on is refused. Step 4 of every artifact here holds on
+    "MAIN MENU", so signing on with the wrong password reported success and
+    exit 0. A run that did not do the thing, saying it did, is the one failure
+    this engine exists to make impossible.
+
+    A regex restores case sensitivity without giving up the wait, so the
+    assertion is still the synchronisation. It also lines replay up with
+    `default_verify`, which has always compared with a plain `in` -- the two
+    halves of the same checkpoint disagreeing was the deeper bug.
+
+    Substring, not equality: a checkpoint names a phrase on the screen, not the
+    whole of an element's text.
+    """
+    return re.compile(re.escape(value))
 
 
 def _named_control(frame: Any, name: str) -> bool:
