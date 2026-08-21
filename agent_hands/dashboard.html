@@ -240,7 +240,7 @@ const DEADLINE = 180;             // matches QueueConsole's, so the page can say
 // operator(), and without it each visit started another loop on the same run.
 // `opRun` is cleared the moment a run settles, because the panel belongs to the
 // job in the heading, and the heading can change while you are away.
-let opRun = null, parked = null, opStart = 0, following = false;
+let opRun = null, parked = null, opStart = 0, following = false, answered = false;
 
 function operator() {
   const cap = watchable();
@@ -269,6 +269,7 @@ function watchable() {
 async function runWatched(cap) {
   $('#go').disabled = true;
   parked = null;
+  answered = false;
   opStart = Date.now();
   $('#ops').innerHTML = '<p class="dim">Watch the browser window…</p>';
   // No `confirm`, so the write is not pre-authorized. `operator` is the run
@@ -327,9 +328,22 @@ async function watch(runId) {
     const run = await j(`/invocations/${runId}`).catch(() => null);
     if (!run) continue;
     if (run.status === 'completed') return run;
-    if (run.status !== 'awaiting_operator' || !run.pending || !$('#ops')) continue;
-    packet(runId, run.pending);
+    if (!$('#ops')) continue;
+    if (run.status === 'awaiting_operator' && run.pending) { packet(runId, run.pending); continue; }
+    // Running, and it has been answered: the engine is doing the step you just
+    // authorized. That is a few seconds of a browser clicking, and a panel
+    // reading "resume…" through it is the one moment the demo goes blank.
+    if (answered) await progress(runId);
   }
+}
+
+async function progress(runId) {
+  const ev = await j(`/invocations/${runId}/events`).catch(() => null);
+  if (!ev || !$('#ops')) return;
+  const steps = ev.events.filter(e => e.event === 'step');
+  $('#ops').innerHTML = `<div class="box"><span class="warn">WORKING</span>
+    <span class="dim">&mdash; the engine is doing the step you authorized</span></div>` +
+    steps.map(st => `<div class="turn">${esc(said(st))}</div>`).join('');
 }
 
 /* Drawn once so a click cannot land on a button that is being replaced; only
@@ -349,7 +363,8 @@ function packet(runId, p) {
       <button class="btn" id="ok">Resume</button>
       <button class="btn" id="no">Abort</button>
       &nbsp;<span class="dim" id="left"></span></div>`;
-    const answer = d => { $('#ops').innerHTML = `<p class="dim">${d}…</p>`;
+    const answer = d => { answered = true;
+      $('#ops').innerHTML = `<p class="dim">${d}…</p>`;
       j(`/invocations/${runId}/decision`, { method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ decision: d, note: 'answered in the console' }) }); };
