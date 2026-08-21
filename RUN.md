@@ -43,6 +43,7 @@ pkill -f "agent_hands.api"
 | **Run with the AI** | a model works the job out from scratch, 20–45s (needs a key, see §5) |
 | **Artifact** | the file a recording produced, including the raw JSON |
 | **Operator** | the same job with nobody authorizing the write: it stops and asks |
+| **Service Desk** | the end-user surface: pick a task, fill in a form, read the answer |
 | **Runs** | every run, with its steps and what it read back |
 
 `--headed` opens a browser window you can watch. Share your whole desktop, not a
@@ -61,6 +62,14 @@ and either way nothing is written. The run says which one it was.
 
 `--operator` on the server does the same for *every* run, including callers
 that are not the console. The tab does not need it.
+
+**Service Desk** is the same engine with the machinery taken off. It builds a
+form from the capability's declared parameters, reads the answer back in plain
+words, and keeps three endings apart: MERIDIAN accepted it, MERIDIAN answered
+no, or it could not finish. Anything that changes a record is read back for
+confirmation first. Where two artifacts do the same job it takes the one with
+business rules, because an artifact without them turns "you are not authorized"
+into a broken automation.
 
 Four of the seven jobs write to the target: **Move money**, **Open an account**,
 **Freeze an account**, **Update contact details**. Each click posts a real

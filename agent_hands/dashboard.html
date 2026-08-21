@@ -43,6 +43,43 @@
   .tag.w { background:#fdf3e2; border-color:#e0c68a; color:#8a5a00; }
   pre { background:#f7f8fa; border:1px solid #c9d4e2; padding:9px; overflow:auto;
         max-height:420px; font-family:Menlo,Consolas,monospace; font-size:11px; margin:0; }
+
+  /* The service desk. Every selector below is scoped to #desk so nothing here
+     can reach the reviewer tabs. */
+  #desk { max-width:560px; margin:6px auto 0; }
+  #desk h2 { border:0; padding:0; margin:0 0 3px; font-size:20px; color:#000; }
+  #desk .sub { color:#555; margin:0 0 18px; }
+  #desk .card { border:1px solid #003366; background:#fff; padding:20px 22px; }
+  #desk label { display:block; margin:0 0 14px; }
+  #desk label .cap { display:block; font-weight:bold; margin:0 0 4px; }
+  #desk label .hint { display:block; color:#777; font-size:11px; margin:3px 0 0; }
+  #desk input { width:100%; box-sizing:border-box; font:inherit; font-size:15px;
+    padding:7px 8px; border:1px solid #7f9db9; background:#fff; }
+  #desk input:focus { outline:2px solid #003366; outline-offset:-2px; }
+  #desk .go { font:inherit; font-size:15px; font-weight:bold; padding:9px 22px;
+    background:#003366; color:#fff; border:1px solid #003366; cursor:pointer; }
+  #desk .go:disabled { background:#8c9bad; border-color:#8c9bad; cursor:default; }
+  #desk .flat { font:inherit; font-size:14px; padding:9px 16px; background:none;
+    border:1px solid #7f9db9; cursor:pointer; }
+  #desk .acts { display:flex; gap:10px; align-items:center; margin-top:4px; }
+  #desk .pick { display:block; width:100%; text-align:left; font:inherit; font-size:15px;
+    padding:13px 15px; margin:0 0 8px; background:#fff; border:1px solid #c9d4e2; cursor:pointer; }
+  #desk .pick:hover { border-color:#003366; background:#f4f7fb; }
+  #desk .pick .w { float:right; font-size:11px; color:#8a5a00; }
+  #desk .val { font-size:27px; font-weight:bold; margin:2px 0 0; }
+  #desk .row { padding:11px 0; border-top:1px solid #e2e6ec; }
+  #desk .row:first-of-type { border-top:0; }
+  #desk .banner { padding:11px 14px; margin:0 0 16px; border-left:4px solid; }
+  #desk .banner.ok   { border-color:#006600; background:#f0f7f0; }
+  #desk .banner.said { border-color:#8a5a00; background:#fdf6e8; }
+  #desk .banner.bad  { border-color:#a00000; background:#faf0f0; }
+  #desk .banner.wait { border-color:#003366; background:#eef2f7; }
+  #desk .banner b { display:block; margin:0 0 3px; }
+  #desk .sign { border-top:1px solid #e2e6ec; margin-top:6px; padding-top:12px; }
+  #desk .sign summary { cursor:pointer; color:#555; font-size:12px; }
+  #desk .live { font-family:Menlo,Consolas,monospace; font-size:12px; color:#333;
+    background:#f7f8fa; border:1px solid #e2e6ec; padding:10px 12px; margin-top:14px;
+    max-height:190px; overflow:auto; }
 </style>
 
 <div id="page">
@@ -56,6 +93,7 @@
     <button data-tab="operator">Operator</button>
     <button data-tab="artifact">Artifact</button>
     <button data-tab="runs">Runs</button>
+    <button data-tab="service">Service Desk</button>
   </div>
   <div id="body"></div>
 </div>
@@ -92,7 +130,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.da
 function go(tab) {
   document.querySelectorAll('#tabs button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.tab === tab));
-  ({about, jobs, operator, artifact, runs})[tab]();
+  ({about, jobs, operator, artifact, runs, service})[tab]();
 }
 
 /* ------------------------------ how it works ------------------------------ */
@@ -375,6 +413,306 @@ function packet(runId, p) {
   const left = Math.max(0, Math.round(p.raised_at + DEADLINE - Date.now() / 1000));
   if ($('#left')) $('#left').textContent =
     left ? `gives up on its own in ${left}s` : 'giving up…';
+}
+
+/* ------------------------------ service desk ------------------------------ */
+/* The end-user surface. Somebody picks a job, fills in a form built from the
+   capability's declared parameters, and reads the answer.
+
+   Nothing here says replay, target, strategy, frame or artifact, because none
+   of that is the person's problem. It also does not show the parameter
+   `description` fields, which are recorder notes ("used in step[6].text") and
+   would leak the machinery straight into the form.
+
+   Kept to its own state and its own DOM ids. It reads the shared helpers and
+   writes none of them, so the reviewer tabs above behave exactly as before. */
+
+const DESK_SIGNON = new Set(['operator', 'password', 'branch']);
+
+/* A caption for every parameter the seven jobs declare. FIELD is not extended,
+   because `said()` reads it and that would change what the Operator tab prints. */
+const DESK_CAP = Object.assign({}, FIELD, {
+  transfer: 'Amount', address_id: 'Address line', deposit: 'Opening deposit',
+  share_type: 'Account type', member_id: 'Member number', share_id: 'Share / account',
+});
+const DESK_HINT = {
+  member_id: 'the number on the member’s card', share_id: 'e.g. 103001-MMKT-3',
+  transfer: 'in dollars', deposit: 'in dollars', reason: 'e.g. LEGAL',
+  from_share: 'the account the money leaves', to_share: 'the account the money lands in',
+};
+/* What the button says, and what the answer screen is called. */
+const DESK_VERB = {
+  balance: ['Check balance', 'Balance'], inquiry: ['Find customer', 'Customer'],
+  signon: ['Sign in', 'Signed in'], transfer: ['Move money', 'Transfer'],
+  open_share: ['Open account', 'New account'], update: ['Save changes', 'Updated'],
+  hold: ['Freeze account', 'Hold'],
+};
+function deskVerb(cap, i) {
+  for (const k in DESK_VERB) if (cap.id.includes(k)) return DESK_VERB[k][i];
+  return i ? 'Result' : 'Run';
+}
+
+/* Why a run stopped, said to the person who asked for it. The engine's own
+   wording -- "step 11 was declined by the approver" -- is for the run log. */
+const DESK_WHY = {
+  approval_required: 'Someone has to approve this before it goes through.',
+  unresolved_element: 'MERIDIAN is not showing what we expected.',
+  checkpoint_failed: 'MERIDIAN is not showing what we expected.',
+  unexpected_state: 'MERIDIAN showed a screen we did not expect.',
+  authentication_required: 'MERIDIAN is asking to sign in again.',
+  attempt_limit: 'This is not going through.',
+  _: 'This needs a person to look at it.',
+};
+
+let deskCap = null, deskRun = null, deskBusy = false;
+
+function service() {
+  $('#body').innerHTML = '<div id="desk"></div>';
+  deskCap ? deskForm() : deskPick();
+}
+
+/* 1. choose a job */
+function deskPick() {
+  // Where two artifacts do the same job, take the one that knows what the
+  // application's refusal screens mean. Without business rules a "you are not
+  // authorized" comes back as a broken automation, which is the one thing an
+  // end-user surface must not do. The Jobs tab still prefers the recorded one;
+  // it is showing what a model produced, which is a different question.
+  const seen = {};
+  for (const c of caps.filter(x => x.id.startsWith('meridian_'))) {
+    const rules = (c.business_codes || []).length;
+    const held = seen[title(c)];
+    if (!held || rules > (held.business_codes || []).length) seen[title(c)] = c;
+  }
+  $('#desk').innerHTML = `<h2>What do you need to do?</h2>
+    <p class="sub">Pick a task.</p>
+    ${Object.values(seen).map(c => `<button class="pick" data-id="${esc(c.id)}">
+      ${esc(title(c))}${c.irreversible ? '<span class="w">changes records</span>' : ''}
+      </button>`).join('')}`;
+  $('#desk').querySelectorAll('.pick').forEach(b => b.onclick = () => {
+    deskCap = caps.find(c => c.id === b.dataset.id);
+    deskRun = null;
+    deskForm();
+  });
+}
+
+/* 2. a form from the declared parameters */
+function deskForm(values) {
+  const cap = deskCap, v = values || {};
+  const mine = cap.params.filter(p => !DESK_SIGNON.has(p.name));
+  const signon = cap.params.filter(p => DESK_SIGNON.has(p.name));
+  const field = p => `<label>
+      <span class="cap">${esc(DESK_CAP[p.name] || p.name.replace(/_/g, ' '))}${
+        p.required ? '' : ' <span class="dim">(optional)</span>'}</span>
+      <input id="f-${esc(p.name)}" name="${esc(p.name)}"
+        type="${p.name === 'password' ? 'password' : 'text'}"
+        value="${esc(v[p.name] || (DESK_SIGNON.has(p.name) ? (p.example || '') : ''))}"
+        ${p.example && !DESK_SIGNON.has(p.name) ? `placeholder="e.g. ${esc(p.example)}"` : ''}>
+      ${DESK_HINT[p.name] ? `<span class="hint">${esc(DESK_HINT[p.name])}</span>` : ''}
+    </label>`;
+  $('#desk').innerHTML = `<h2>${esc(title(cap))}</h2>
+    <p class="sub">Fill this in and we will do it on MERIDIAN for you.</p>
+    <div class="card">
+      ${mine.map(field).join('') || '<p class="dim">Nothing to fill in.</p>'}
+      ${signon.length ? `<details class="sign"><summary>Signed in as
+        ${esc((signon.find(p => p.name === 'operator') || {}).example || 'operator')}
+        &mdash; change</summary><div style="margin-top:12px">
+        ${signon.map(field).join('')}</div></details>` : ''}
+      <div class="acts" style="margin-top:16px">
+        <button class="go" id="d-go">${esc(deskVerb(cap, 0))}</button>
+        <button class="flat" id="d-back">Choose another task</button>
+      </div>
+      <p id="d-err" class="err" style="margin:12px 0 0"></p>
+    </div>`;
+  $('#d-back').onclick = () => { deskCap = null; deskPick(); };
+  $('#d-go').onclick = deskSubmit;
+}
+
+function deskValues() {
+  const a = {};
+  deskCap.params.forEach(p => {
+    const el = $(`#f-${p.name}`);
+    a[p.name] = el ? el.value.trim() : '';
+  });
+  return a;
+}
+
+function deskSubmit() {
+  const args = deskValues();
+  const missing = deskCap.params
+    .filter(p => p.required && !args[p.name])
+    .map(p => DESK_CAP[p.name] || p.name);
+  if (missing.length) {
+    $('#d-err').textContent = `Still needed: ${missing.join(', ')}`;
+    return;
+  }
+  // Anything that changes a record gets read back to the person first.
+  deskCap.irreversible ? deskConfirm(args) : deskGo(args);
+}
+
+/* 3. one last look, for anything that cannot be undone */
+function deskConfirm(args) {
+  const shown = deskCap.params.filter(p => !DESK_SIGNON.has(p.name) && args[p.name]);
+  $('#desk').innerHTML = `<h2>Check this before we do it</h2>
+    <p class="sub">This changes records on MERIDIAN and cannot be undone.</p>
+    <div class="card">
+      ${shown.map(p => `<div class="row"><span class="dim">${
+        esc(DESK_CAP[p.name] || p.name)}</span><br><b>${esc(args[p.name])}</b></div>`).join('')}
+      <div class="acts" style="margin-top:18px">
+        <button class="go" id="d-yes">${esc(deskVerb(deskCap, 0))}</button>
+        <button class="flat" id="d-no">Go back</button>
+      </div>
+    </div>`;
+  $('#d-no').onclick = () => deskForm(args);
+  $('#d-yes').onclick = () => deskGo(args);
+}
+
+/* 4. run it, and say what is happening while it does */
+async function deskGo(args) {
+  if (deskBusy) return;
+  deskBusy = true;
+  const cap = deskCap, t0 = Date.now();
+  $('#desk').innerHTML = `<h2>${esc(title(cap))}</h2>
+    <p class="sub">Working on it. This usually takes a few seconds.</p>
+    <div class="banner wait"><b id="d-now">Starting…</b>
+      <span class="dim" id="d-el"></span></div>
+    <div class="live" id="d-log"></div>`;
+  const body = { args, wait_seconds: 0, operator: true };
+  // The person already confirmed on the previous screen; this carries that
+  // through, bound to these exact values.
+  if (cap.irreversible)
+    body.confirm = { capability: cap.id, args_digest: await digest(args) };
+
+  let started;
+  try {
+    started = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body) });
+  } catch (e) {
+    deskBusy = false;
+    return deskFail(null, 'We could not reach the service.');
+  }
+  if (started.error) { deskBusy = false; return deskFail(null, started.error); }
+  deskRun = started.run_id;
+  const tick = setInterval(() => {
+    const el = $('#d-el');
+    if (el) el.textContent = `${((Date.now() - t0) / 1000).toFixed(0)}s`;
+  }, 500);
+  const done = await deskPoll(deskRun);
+  clearInterval(tick);
+  deskBusy = false;
+  if (done) deskDone(done);
+}
+
+async function deskPoll(runId) {
+  const said = new Set();
+  for (;;) {
+    await sleep(700);
+    if (deskRun !== runId || !$('#desk')) return null;
+    const run = await j(`/invocations/${runId}`).catch(() => null);
+    if (!run) continue;
+    if (run.status === 'completed') return run;
+    if (run.status === 'awaiting_operator' && run.pending) { deskWait(runId, run.pending); continue; }
+    if (!$('#d-log')) continue;                      // the approval screen is up
+    const ev = await j(`/invocations/${runId}/events`).catch(() => null);
+    if (!ev) continue;
+    for (const e of ev.events.filter(x => x.event === 'step')) {
+      const line = deskLine(e);
+      if (!line || said.has(e.index)) continue;
+      said.add(e.index);
+      $('#d-log').insertAdjacentHTML('beforeend', `<div>${esc(line)}</div>`);
+      $('#d-log').scrollTop = $('#d-log').scrollHeight;
+      if ($('#d-now')) $('#d-now').textContent = line;
+    }
+  }
+}
+
+/* Plain language for one step. Deliberately says what a person watching the
+   screen would say, and never how the control was found. */
+function deskLine(s) {
+  const m = s.resolved_by && /^\w+ "(.*)"$/.exec(s.resolved_by.value || '');
+  const named = m ? m[1] : null;
+  const p = (s.text || '').replace(/^\{(.+)\}$/, (_, n) => DESK_CAP[n] || n);
+  if (s.action === 'navigate') return 'Opening MERIDIAN';
+  if (s.action === 'type' || s.action === 'select') return `Filling in ${p || 'a field'}`;
+  if (s.action === 'click') return named ? `${named}` : 'Working';
+  if (s.action === 'read') return 'Reading the answer';
+  return null;
+}
+
+/* 5b. somebody has to say yes */
+function deskWait(runId, pending) {
+  if ($('#d-ok')) return;
+  $('#desk').innerHTML = `<h2>Waiting for approval</h2>
+    <p class="sub">This needs a person to say yes before it goes through.</p>
+    <div class="banner wait"><b>${esc(DESK_WHY[pending.reason] || DESK_WHY._)}</b>
+      Nothing has been changed yet.</div>
+    <div class="card">
+      <div class="acts">
+        <button class="go" id="d-ok">Approve</button>
+        <button class="flat" id="d-cancel">Cancel</button>
+      </div>
+      <p class="dim" style="margin:12px 0 0">If nobody answers, this cancels itself
+        and nothing is changed.</p>
+    </div>`;
+  const answer = d => {
+    $('#desk').innerHTML = `<h2>${esc(title(deskCap))}</h2>
+      <div class="banner wait"><b>${d === 'resume' ? 'Approved. Finishing…' : 'Cancelling…'}</b></div>
+      <div class="live" id="d-log"></div>`;
+    j(`/invocations/${runId}/decision`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: d, note: 'answered by the requester' }) });
+  };
+  $('#d-ok').onclick = () => answer('resume');
+  $('#d-cancel').onclick = () => answer('abort');
+}
+
+/* 6 & 7. the answer, with the application's "no" kept apart from a breakage */
+function deskDone(run) {
+  const res = run.result || {};
+  const outs = Object.entries(res.outputs || {});
+  if (res.outcome === 'success') {
+    $('#desk').innerHTML = `<h2>${esc(deskVerb(deskCap, 1))}</h2>
+      <div class="card">
+        ${outs.length ? outs.map(([k, v]) => `<div class="row">
+            <span class="dim">${esc(OUT[k] || k.replace(/_/g, ' '))}</span>
+            <div class="val">${esc(v)}</div></div>`).join('')
+          : '<p>Done.</p>'}
+      </div>
+      <div class="banner ok" style="margin-top:16px"><b>Completed successfully</b>
+        MERIDIAN accepted it.</div>
+      ${deskAgain()}`;
+  } else if (res.outcome === 'business_outcome') {
+    // Not a fault. The application considered the request and said no.
+    $('#desk').innerHTML = `<h2>MERIDIAN answered</h2>
+      <div class="banner said"><b>${esc(res.message || 'The request was declined.')}</b>
+        This is the system's answer, not a fault. Nothing was changed.</div>
+      ${deskAgain()}`;
+  } else {
+    deskFail(run.run_id, res.message || run.error || '');
+  }
+}
+
+function deskFail(runId, detail) {
+  const closed = /closed|nobody answered|declined/i.test(detail || '');
+  $('#desk').innerHTML = `<h2>We could not finish that</h2>
+    <div class="banner bad"><b>${closed
+      ? 'The request was cancelled before anything changed.'
+      : 'Something went wrong partway through.'}</b>
+      Nothing was changed. You can try again.</div>
+    ${runId ? `<p class="dim">If you need to report this, the reference is
+      <b>${esc(runId)}</b>.</p>` : ''}
+    ${deskAgain()}`;
+}
+
+function deskAgain() {
+  setTimeout(() => {
+    if ($('#d-more')) $('#d-more').onclick = () => deskForm();
+    if ($('#d-new')) $('#d-new').onclick = () => { deskCap = null; deskPick(); };
+  }, 0);
+  return `<div class="acts" style="margin-top:18px">
+    <button class="flat" id="d-more">Do this again</button>
+    <button class="flat" id="d-new">Another task</button></div>`;
 }
 
 /* ------------------------------ what it wrote ----------------------------- */
