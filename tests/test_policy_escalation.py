@@ -803,3 +803,35 @@ class TestAppProfiles(unittest.TestCase):
 
         self.assertIs(DEFAULT_PROFILE, self.profile("something-nobody-configured"))
 
+
+
+class TestRiskReadsTheLabelNotTheLocation(unittest.TestCase):
+    """Where the browser is is not what the operator pressed.
+
+    `classify_risk` used to match on the label and the URL together. On a real
+    transfer flow that made every click irreversible -- the menu link, the
+    Search button, the Select link -- because the path contained "transfer".
+    Over-classifying is fail-safe but it is not free: each one stops the run and
+    asks a person, so a flow with five of them asks five times and the gate
+    stops meaning anything.
+    """
+
+    TRANSFER = "https://bank.test/members/103001/transfer"
+
+    def risk(self, label: str) -> Risk:
+        return classify_risk("click", url=self.TRANSFER, label=label)
+
+    def test_getting_to_the_transfer_screen_is_not_the_transfer(self) -> None:
+        for label in ("Funds Transfer", "Search", "Select", "Continue"):
+            with self.subTest(label=label):
+                self.assertIs(Risk.REVERSIBLE, self.risk(label))
+
+    def test_the_control_that_moves_the_money_still_is(self) -> None:
+        # "transfer" is not in the vocabulary any more, so this has to be caught
+        # by "post" -- which is what the button on the confirmation screen says.
+        self.assertIs(Risk.IRREVERSIBLE, self.risk("Post Transfer"))
+
+    def test_a_write_is_gated_wherever_it_happens(self) -> None:
+        # The corollary of dropping the URL: the label now carries it alone.
+        self.assertIs(Risk.IRREVERSIBLE,
+                      classify_risk("click", url="https://bank.test/", label="Apply Hold"))

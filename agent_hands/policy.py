@@ -444,7 +444,13 @@ def classify_risk(action: str, *, url: str = "", label: str = "") -> Risk:
     it. This only gets the common cases right up front, so the reviewer's
     attention lands on the ones it got wrong.
     """
-    text = f"{label} {url}".lower()
+    # The label only, for a click. Where you are is not what you pressed: every
+    # control on a page whose path contains "transfer" is not a transfer, and
+    # reading the URL made a menu link, a Search button and a Select link all
+    # come back irreversible. An over-classified step is fail-safe but it is not
+    # free -- each one stops the run and asks a person, so a flow with five of
+    # them asks five times and the gate stops meaning anything.
+    text = (label or "").lower()
     if action in ("read", "wait_for", "navigate"):
         return Risk.SAFE
     if action in ("type", "select"):
@@ -457,8 +463,11 @@ def classify_risk(action: str, *, url: str = "", label: str = "") -> Risk:
         # action, the one that needs a supervisor, is a button reading "Apply
         # Hold", and none of the original words appear in it -- so freezing
         # somebody's account classified as reversible and the gate never ran.
+        # "transfer" is absent on purpose: it is a noun in navigation --
+        # "Funds Transfer" is a menu link -- and the button that actually moves
+        # money reads "Post Transfer", which "post" already catches.
         writing = ("submit", "save", "delete", "remove", "approve", "post",
-                   "transfer", "pay", "send", "confirm", "close account",
+                   "pay", "send", "confirm", "close account",
                    "apply hold", "place hold", "open share", "freeze",
                    "release hold", "override")
         if any(word in text for word in writing):

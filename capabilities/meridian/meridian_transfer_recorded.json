@@ -351,7 +351,7 @@
       },
       "text": null,
       "url": null,
-      "risk": "irreversible",
+      "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
       "note": "Go to Funds Transfer"
@@ -467,7 +467,7 @@
       },
       "text": null,
       "url": null,
-      "risk": "irreversible",
+      "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
       "note": "Run the member search"
@@ -525,7 +525,7 @@
       },
       "text": null,
       "url": null,
-      "risk": "irreversible",
+      "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
       "note": "Select the member to proceed to transfer"
@@ -757,7 +757,7 @@
       },
       "text": null,
       "url": null,
-      "risk": "irreversible",
+      "risk": "reversible",
       "checkpoint": null,
       "extracts": null,
       "note": "Continue to confirmation step"
