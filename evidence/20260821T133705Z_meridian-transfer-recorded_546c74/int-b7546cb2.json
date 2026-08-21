@@ -1,0 +1,23 @@
+{
+  "id": "int-b7546cb2",
+  "reason": "approval_required",
+  "capability": "meridian_transfer_recorded",
+  "step_index": 13,
+  "step_action": "click",
+  "question": "step 13 was declined by the approver",
+  "expected": null,
+  "observed": null,
+  "url": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "screenshot": "/Users/kayvan/Desktop/agent-hands/evidence/20260821T133705Z_meridian-transfer-recorded_546c74/int-b7546cb2-before.png",
+  "checkpoint": null,
+  "evidence_dir": "/Users/kayvan/Desktop/agent-hands/evidence/20260821T133705Z_meridian-transfer-recorded_546c74",
+  "options": [
+    "fix the page in the open browser, then resume",
+    "abort the run"
+  ],
+  "context": {
+    "app": "meridian-core",
+    "variant": "default"
+  },
+  "raised_at": 1787319426.6195421
+}

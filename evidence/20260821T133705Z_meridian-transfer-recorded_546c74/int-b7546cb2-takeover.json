@@ -1,0 +1,10 @@
+{
+  "request_id": "int-b7546cb2",
+  "decision": "abort",
+  "url_before": "https://web-sample.interface-hiring.com/members/103001/transfer/review",
+  "url_after": "https://web-sample.interface-hiring.com/menu",
+  "page_moved": true,
+  "note": "the browser window was closed",
+  "seconds": 8.102,
+  "screenshot_after": null
+}
