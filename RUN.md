@@ -28,6 +28,17 @@ meridian_open_share_recorded,meridian_update_recorded,meridian_place_hold_record
 
 Open <http://127.0.0.1:8080/>.
 
+Add `--operator` to let a person answer when a run stops and asks:
+
+```bash
+.venv/bin/python -m agent_hands.api --port 8080 --headed --operator \
+  --confirmable meridian_signon_recorded,meridian_inquiry_recorded,\
+meridian_balance_recorded,meridian_transfer_recorded,\
+meridian_open_share_recorded,meridian_update_recorded,meridian_place_hold_recorded
+```
+
+Without it an escalation aborts, which is what an unattended run should do.
+
 Stop it with `Ctrl-C`, or from another terminal:
 
 ```bash
@@ -43,6 +54,11 @@ pkill -f "agent_hands.api"
 | **Run with the AI** | a model works the job out from scratch, 20–45s (needs a key, see §5) |
 | **Artifact** | the file a recording produced, including the raw JSON |
 | **Runs** | every run, with its steps and what it read back |
+
+Tick **ask a person before writing** and the run stops at the step that
+writes instead of taking the caller's confirmation. The panel says why, the
+browser stays on the screen it stopped at, and **Resume** or **Abort** answers
+it. Needs `--operator`; nobody answering within three minutes aborts.
 
 `--headed` opens a browser window you can watch. Share your whole desktop, not a
 single window, or your audience will not see it.
@@ -105,8 +121,8 @@ approved artifact and there is not one yet.
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 97
-.venv/bin/python tests/test_replay.py      # 29, real browser
+.venv/bin/python -m pytest tests -q        # 118
+.venv/bin/python tests/test_replay.py      # 31, real browser
 ```
 
 Both start their own local fixture. Neither needs a key.
@@ -143,5 +159,5 @@ with `curl -s -o /dev/null -w "%{http_code}" localhost:8080/`.
 **Everything against the target fails.** Check it is up:
 `curl -s -o /dev/null -w "%{http_code}" https://web-sample.interface-hiring.com/signon`
 
-**`no tests ran`, or a count below 97 / 29.** You are not in the repo root.
+**`no tests ran`, or a count below 118 / 31.** You are not in the repo root.
 pytest exits `4` and looks almost green.

@@ -2,8 +2,8 @@
 
 The core is unchanged in shape: a model drives an application once and writes a
 reviewable artifact; a deterministic engine replays it with no model in the loop.
-Pointing it at MERIDIAN CORE took two edits to shared code, one new module, and
-seven artifacts. This is what each of those was, and what I got wrong.
+Pointing it at MERIDIAN CORE took a handful of edits to shared code, two new
+modules, and seven artifacts. This is what each of those was, and what I got wrong.
 
 ## What the adaptation actually took
 
@@ -96,13 +96,18 @@ Feeding all six injected faults through the engine, against the real host:
 
 Four are right. Two are not, and both are worth being precise about.
 
-`timeout` should be recognized as an expired session and recovered or escalated.
-It is not, because the engine's condition table is a module constant that looks
-for "session has expired" while MERIDIAN says "your session has timed out". The
-same is true of "you do not have permission" against "supervisor override
-required". Two of six exceptional states are dead code against this target, and
-the fix is to make that table per-app configuration — which is what
-`BusinessRule` already is, and for exactly this reason.
+`timeout` was not recognized as an expired session, because the engine's
+condition table was a module constant looking for "session has expired" while
+MERIDIAN says "your session has timed out". Two of six exceptional states were
+dead code against this target. The table is per-app configuration now --
+`AppProfile`, keyed on the artifact's own `app_id`, which is what `BusinessRule`
+already was and for exactly this reason. The table above is the run that found
+this; a unit test covers each application recognizing its own wording and
+neither recognizing the other's, but I have not re-run the six injected faults
+end to end since, so treat that row as the diagnosis rather than the retest. "Supervisor override required" is
+deliberately not in it: the application is answering, not faulting, so it stays
+a `BusinessRule` and comes back as an outcome the caller can act on. A condition
+is for a state the engine can retry, re-enter or dismiss.
 
 `maintenance` is detected. The engine recognizes the interstitial and clicks its
 Continue link, but the injected fault fires on every request, so it reappears and
@@ -147,11 +152,25 @@ wrote what was *typed*, so the operator's password appeared in the clear in
 `run.jsonl` — all of the cost of redaction and none of the benefit. Steps now
 record the template (`{password}`) rather than the value.
 
-Escalation is stubbed at the seam it was designed for. `OperatorConsole` is a
-two-method protocol and everything above it is real — the ownership state
-machine, the intervention packet, the re-check on resume. The API uses the
-unattended console: stop, and say a person was needed. Approving automatically
-would wave through the steps the gate exists for.
+Escalation now runs through the API. `OperatorConsole` is two methods precisely
+so the terminal version and a review queue can stand in for each other, and
+`QueueConsole` is the second one: the run parks, the browser stays open on the
+screen it stopped at, and a person answers over HTTP. Everything above it was
+already real -- the ownership state machine, the intervention packet, the
+re-check before control comes back. It is off unless `--operator` says somebody
+is watching, because an unattended run should stop and say a person was needed
+rather than wait on one; and an unanswered handoff aborts after three minutes,
+which is the same ending by a slower route.
+
+Building it found the escalation path's own dead spot. `verify_resume` refuses
+without a confirmed checkpoint, which is right when a run broke before
+confirming anything -- but an approval is not that case. Nothing failed, the
+page has not moved, and the step needing a yes has not run. Since every artifact
+the recorder produces carries a check only on its last step, that refusal fired
+on every approval resume: a path demonstrable by hand and dead against real
+artifacts. An approval handoff now anchors on the URL it asked about, so a
+person who navigates away is still refused. Which question gets asked changed,
+not whether one is.
 
 ## What recording against it actually found
 
@@ -232,37 +251,32 @@ that read degrades on every replay by construction.
   fields as `LABELLED_FIELD`; a value cell needs the same thing anchored to the
   row it is in. The artifacts carry an xpath as a workaround, which works and
   does not generalize.
-- **No regression test at home for the caption fix or the dropdown tool**,
-  because the local fixture has no stacked-caption form and no `<select>` at all.
-  This is the cut I like least: both bugs were hidden by the fixture's shape, and
-  I have not changed that shape.
-- **The condition table is still a module constant.** `timeout` and `permission`
-  remain misclassified against this target because the engine looks for "session
-  has expired" and MERIDIAN says "your session has timed out". Making that table
-  per-app configuration is what turns "we edited the engine for the second
-  target" into "we adapted by configuration", and it is the largest remaining
-  piece of that argument.
-- **`classify_risk` over-classifies on the transfer.** Every click on a page
-  whose URL contains "transfer" is irreversible, which is fail-safe and noisy.
 - **The confirmation gate is a deliberate-action gate, not an authorization
   one.** Nothing knows who is asking. Real authorization needs identity, which
-  this system does not have.
-- **The operator console is still stubbed.** The escalation path is real and
-  demonstrated — a transfer with nobody authorized to approve it stops at the
-  post step and leaves an intervention packet with screenshots — but a person
-  answers it at a terminal, not in the console.
+  this system does not have. The operator handoff has the same hole from the
+  other side: whoever has the console answers, and the run records that somebody
+  did, not who.
+- **A parked run holds a browser.** `QueueConsole` blocks a worker thread with a
+  live page on it, which is the right shape for one person watching and the
+  wrong one for a queue with depth. Parking properly means letting the browser
+  go and re-establishing it on resume, which the artifact makes possible and
+  nothing here does.
+- **Recorded artifacts still checkpoint only their last step.** The approval
+  handoff no longer needs one, but a resume after a failed checkpoint or an
+  unfound control does, and there it still refuses. The fix belongs in the
+  recorder: confirm each screen as it is reached, not the destination only.
 
 ## Running it
 
 ```bash
 # no credentials needed for any of this
-PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 \
-    --confirmable meridian_funds_transfer      # then open localhost:8080
+PYTHONPATH=. .venv/bin/python -m agent_hands.api --port 8080 --headed \
+    --operator --confirmable meridian_transfer_recorded   # then open localhost:8080
 
 PYTHONPATH=. .venv/bin/python tools/build_meridian.py   # re-author the seven
 ```
 
-Suites: 97 unit, 29 end-to-end against a real browser, nothing mocked. The rule
+Suites: 118 unit, 31 end-to-end against a real browser, nothing mocked. The rule
 the design rests on still holds — replay cannot reach a model:
 
 ```bash

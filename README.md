@@ -47,8 +47,8 @@ The tests, which also need no credentials:
 
 ```bash
 export PYTHONPATH=.
-.venv/bin/python -m pytest tests -q        # 97
-.venv/bin/python tests/test_replay.py      # 29, real browser
+.venv/bin/python -m pytest tests -q        # 118
+.venv/bin/python tests/test_replay.py      # 31, real browser
 ```
 
 And one capability from the command line:
@@ -252,11 +252,17 @@ knew it was on before it will act again:
 |---|---|
 | fix the page, leave it where it was | resume verified, the step is retried |
 | finish the step yourself | refused: *page moved during handoff* |
-| anything, on any artifact in `capabilities/` | refused: *no confirmed checkpoint* |
+| a step that failed, on an artifact with no earlier check | refused: *no confirmed checkpoint* |
+| a step waiting on approval | verified against the screen it asked about |
 
-The last row is a real limitation, not a quirk. Recording attaches a check to the
-**final** step only, so when an earlier step fails there is nothing confirmed to
-compare against. `REPORT.md` covers it under Cuts. All three rows are asserted in
+The third row is a real limitation, not a quirk. Recording attaches a check to
+the **final** step only, so when an earlier step fails there is nothing
+confirmed to compare against. `REPORT.md` covers it under Cuts.
+
+The fourth is the exception, and it is not a loosening. An approval handoff has
+not lost its place: nothing failed, the page has not moved, and the step needing
+a yes has not run. So it anchors on the URL it asked about, and a person who
+navigates away during the handoff is refused exactly as before. All three rows are asserted in
 `tests/test_replay.py` under "escalation, resume and handback", which is the
 place to look for the working case without driving a browser by hand.
 
@@ -329,13 +335,13 @@ every bug worth finding here was a disagreement between what the code assumed a
 page would do and what it did.
 
 ```bash
-# 87 unit tests: perception (needs the fixture up), policy, escalation, recorder
+# 108 unit tests: perception (needs the fixture up), policy, escalation, recorder
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_perception tests.test_policy_escalation
 
 # 10 more, covering the CLI
 PYTHONPATH=. .venv/bin/python -m unittest tests.test_cli
 
-# 29 end-to-end behaviors; starts its own fixture if one is not running
+# 31 end-to-end behaviors; starts its own fixture if one is not running
 PYTHONPATH=. .venv/bin/python tests/test_replay.py
 ```
 
