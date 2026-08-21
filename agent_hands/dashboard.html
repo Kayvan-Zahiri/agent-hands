@@ -53,6 +53,7 @@
   <div id="tabs">
     <button data-tab="about" aria-current="true">Overview</button>
     <button data-tab="jobs">Jobs</button>
+    <button data-tab="operator">Operator</button>
     <button data-tab="artifact">Artifact</button>
     <button data-tab="runs">Runs</button>
   </div>
@@ -91,7 +92,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.da
 function go(tab) {
   document.querySelectorAll('#tabs button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.tab === tab));
-  ({about, jobs, artifact, runs})[tab]();
+  ({about, jobs, operator, artifact, runs})[tab]();
 }
 
 /* ------------------------------ how it works ------------------------------ */
@@ -124,13 +125,10 @@ function about() {
       <div><h3>EVERY TIME SINCE &mdash; NO AI</h3>
         <div class="in" id="rhs"><p class="dim">The engine repeats what it wrote.</p></div>
         <div class="foot"><button class="btn" id="rep">Run the recording</button>
-          <label class="dim">&nbsp;<input type="checkbox" id="ask"> ask a person
-            before writing</label>
           <span id="repfoot" class="dim"></span></div></div>
     </div>`;
   $('#rec').onclick = runAI;
   $('#rep').onclick = runEngine;
-  $('#ask').onchange = e => { window.__ask = e.target.checked; };
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -172,33 +170,6 @@ async function runAI() {
   caps = (await j('/capabilities')).capabilities;
 }
 
-/* A run can stop and ask for a person. Poll it, show the packet when it does,
-   and let whoever is watching answer -- the browser is still sitting on the
-   screen it stopped at, which is the whole reason to stop rather than fail. */
-async function watch(runId) {
-  for (;;) {
-    await new Promise(r => setTimeout(r, 700));
-    const run = await j(`/invocations/${runId}`);
-    if (run.status === 'completed') return run;
-    if (run.status === 'awaiting_operator' && run.pending && !$('#ok')) {
-      const p = run.pending;
-      $('#rhs').innerHTML = `<div class="box">
-        <span class="err">NEEDS A PERSON</span> &mdash; ${esc(p.reason || '')}<br><br>
-        ${esc(p.question || '')}<br><br>
-        <span class="dim">The browser is still on the screen it stopped at.</span><br><br>
-        <button class="btn" id="ok">Resume</button>
-        <button class="btn" id="no">Abort</button></div>`;
-      const answer = d => j(`/invocations/${runId}/decision`, { method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ decision: d, note: 'answered in the console' }) });
-      $('#ok').onclick = () => { $('#rhs').innerHTML = '<p class="dim">resuming…</p>';
-                                 answer('resume'); };
-      $('#no').onclick = () => { $('#rhs').innerHTML = '<p class="dim">aborting…</p>';
-                                 answer('abort'); };
-    }
-  }
-}
-
 async function digest(a) {
   const b = await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(JSON.stringify(a, Object.keys(a).sort())));
@@ -214,14 +185,11 @@ async function runEngine() {
   $('#rhs').innerHTML = '<p class="dim">Watch the browser window…</p>';
   const t0 = Date.now();
   const args = argsFor(cap);
-  const body = { args, wait_seconds: 0 };
-  // A write needs the caller to say so, tied to these exact values. Withhold it
-  // and the run stops at the write and asks a person instead.
-  if (cap.irreversible && !window.__ask)
-    body.confirm = { capability: cap.id, args_digest: await digest(args) };
-  const started = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
+  const body = { args };
+  // A write needs the caller to say so, tied to these exact values.
+  if (cap.irreversible) body.confirm = { capability: cap.id, args_digest: await digest(args) };
+  const r = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const r = await watch(started.run_id);
   $('#rep').disabled = false;
   const ev = await j(`/invocations/${r.run_id}/events`);
   const steps = ev.events.filter(e => e.event === 'step');
@@ -260,6 +228,130 @@ function jobs() {
     produced = null;
     go('about');
   });
+}
+
+/* -------------------------- somebody is watching -------------------------- */
+/* The same replay the Overview runs, with one thing withheld: the confirmation
+   that says a write was meant. The run reaches the step that writes, stops, and
+   asks. Nothing on this page changes how any other run behaves -- `operator` is
+   sent per invocation, so a run that does not ask still gives up on its own. */
+const DEADLINE = 180;             // matches QueueConsole's, so the page can say so
+let opRun = null, parked = null, opStart = 0;
+
+function operator() {
+  const cap = watchable();
+  $('#body').innerHTML = `
+    <h1>${esc(cap ? title(cap) : 'Nothing that writes')} &mdash; with somebody watching</h1>
+    <div class="two"><div style="flex:none;width:100%">
+      <h3>THE RUN</h3>
+      <div class="in" id="ops"><p class="dim">The engine drives until it reaches
+        the step that writes, then stops and asks.</p></div>
+      <div class="foot"><button class="btn" id="go"${cap ? '' : ' disabled'}>Start</button>
+        <span id="opfoot" class="dim"></span></div></div></div>`;
+  if (cap) $('#go').onclick = () => runWatched(cap);
+  // A run left parked while you were on another tab is still parked, and the
+  // browser is still sitting on its screen. Pick that one back up rather than
+  // offering a second Start, which would leave the first one waiting on nobody.
+  if (opRun) rejoin(opRun);
+}
+
+/* Only a job with a write has a step worth stopping at. */
+function watchable() {
+  if (picked && picked.irreversible) return picked;
+  return caps.find(c => c.id === 'meridian_transfer_recorded')
+      || caps.find(c => c.id.startsWith('meridian_') && c.irreversible) || null;
+}
+
+async function rejoin(runId) {
+  const run = await j(`/invocations/${runId}`);
+  if (run.status === 'completed') return settled(runId, run);
+  $('#go').disabled = true;
+  const r = await watch(runId);
+  if (r) settled(runId, r);
+}
+
+async function runWatched(cap) {
+  $('#go').disabled = true;
+  parked = null;
+  opStart = Date.now();
+  $('#ops').innerHTML = '<p class="dim">Watch the browser window…</p>';
+  // No `confirm`, so the write is not pre-authorized. `operator` is the run
+  // asking to be parked on a person rather than abandoned.
+  const started = await j(`/capabilities/${encodeURIComponent(cap.id)}/invocations`,
+    { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ args: argsFor(cap), wait_seconds: 0, operator: true }) });
+  opRun = started.run_id;
+  const r = await watch(opRun);
+  if (r) settled(opRun, r);
+}
+
+async function settled(runId, r) {
+  if (opRun !== runId || !$('#ops')) return;
+  $('#go').disabled = false;
+  const ev = await j(`/invocations/${runId}/events`);
+  const steps = ev.events.filter(e => e.event === 'step');
+  const res = r.result || {};
+  const v = VERDICT[res.outcome] || ['dim', res.outcome || 'stopped'];
+  const note = parked
+    ? (res.outcome === 'success' ? ' &mdash; parked once, a person said yes'
+                                 : ' &mdash; parked once, and nothing was written')
+    : '';
+  $('#ops').innerHTML =
+    `<div class="box"><span class="${v[0]}">${v[1]}</span>${note}` +
+    (res.message ? `<br><span class="dim">${esc(res.message)}</span>` : '') +
+    (r.error ? `<br><span class="err">${esc(r.error)}</span>` : '') +
+    (Object.entries(res.outputs || {}).map(([k, val]) =>
+      `<br>${esc(OUT[k] || k)}: <b>${esc(val)}</b>`).join('')) + '</div>' +
+    steps.map(st => `<div class="turn">${esc(said(st))}</div>`).join('');
+  $('#opfoot').innerHTML = ` <b>0 model turns</b> &middot; ` +
+    `${((Date.now() - opStart) / 1000).toFixed(1)}s`;
+}
+
+/* A run can stop and ask for a person. Poll it, show the packet when it does,
+   and let whoever is watching answer -- the browser is still sitting on the
+   screen it stopped at, which is the whole reason to stop rather than fail.
+
+   Returns null when a newer run has taken the panel, so an abandoned poller
+   stops instead of painting its stale packet over the live one. */
+async function watch(runId) {
+  for (;;) {
+    await sleep(700);
+    if (opRun !== runId) return null;
+    const run = await j(`/invocations/${runId}`).catch(() => null);
+    if (!run) continue;
+    if (run.status === 'completed') return run;
+    if (run.status !== 'awaiting_operator' || !run.pending || !$('#ops')) continue;
+    packet(runId, run.pending);
+  }
+}
+
+/* Drawn once so a click cannot land on a button that is being replaced; only
+   the clock is rewritten after that. */
+function packet(runId, p) {
+  parked = p;
+  if (!$('#ok')) {
+    $('#ops').innerHTML = `<div class="box">
+      <span class="err">NEEDS A PERSON</span> &mdash; ${esc(p.reason || '')}<br><br>
+      ${esc(p.question || '')}<br><br>
+      <span class="dim">The browser is still on the screen it stopped at.
+        Nothing has been written.<br>
+        Answer here. Clicking in the browser window does not reach the run, and
+        doing the step by hand means resume is refused &mdash; otherwise the
+        engine would do it a second time.</span><br><br>
+      <button class="btn" id="ok">Resume</button>
+      <button class="btn" id="no">Abort</button>
+      &nbsp;<span class="dim" id="left"></span></div>`;
+    const answer = d => { $('#ops').innerHTML = `<p class="dim">${d}…</p>`;
+      j(`/invocations/${runId}/decision`, { method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ decision: d, note: 'answered in the console' }) }); };
+    $('#ok').onclick = () => answer('resume');
+    $('#no').onclick = () => answer('abort');
+  }
+  // Both clocks are this machine's, so raised_at is directly comparable.
+  const left = Math.max(0, Math.round(p.raised_at + DEADLINE - Date.now() / 1000));
+  if ($('#left')) $('#left').textContent =
+    left ? `gives up on its own in ${left}s` : 'giving up…';
 }
 
 /* ------------------------------ what it wrote ----------------------------- */

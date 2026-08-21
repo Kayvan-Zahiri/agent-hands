@@ -846,10 +846,13 @@ class TestQueueConsole(unittest.TestCase):
     the screen the run stopped at.
     """
 
-    def console(self) -> tuple[object, object]:
+    def console(self, timeout: float = 5.0) -> tuple[object, object]:
+        # Generous by default: these tests are about what an answer does, and a
+        # loaded machine must not turn one into a timeout. The two tests that
+        # are about the deadline ask for a short one.
         from agent_hands.api import QueueConsole, Run
         run = Run(run_id="r1", capability="c", args={})
-        return QueueConsole(run, timeout_seconds=0.2), run
+        return QueueConsole(run, timeout_seconds=timeout), run
 
     def packet(self) -> InterventionRequest:
         return InterventionRequest(id="h1", reason=Reason.APPROVAL,
@@ -857,8 +860,11 @@ class TestQueueConsole(unittest.TestCase):
                                    question="post this transfer?")
 
     def test_the_answer_comes_back_and_the_run_is_unparked(self) -> None:
+        import threading
         console, run = self.console()
-        run.answers.put(("resume", "checked it"))
+        # Answered after the packet goes up, which is the only ordering that
+        # counts -- see TestAnswersDoNotOutliveTheirQuestion.
+        threading.Timer(0.05, lambda: run.answers.put(("resume", "checked it"))).start()
 
         reply = console.ask(self.packet())
 
@@ -870,7 +876,7 @@ class TestQueueConsole(unittest.TestCase):
     def test_while_it_waits_the_packet_is_readable(self) -> None:
         # What the console polls for. Nobody answers, so it times out, but the
         # packet has to have been visible on the run for it to be answerable.
-        console, run = self.console()
+        console, run = self.console(0.2)
         seen: list[dict[str, object] | None] = []
 
         import threading
@@ -887,7 +893,7 @@ class TestQueueConsole(unittest.TestCase):
     def test_nobody_answering_ends_the_run_the_safe_way(self) -> None:
         # A run waiting on somebody who went home must end, and end the way an
         # unattended run does.
-        console, run = self.console()
+        console, run = self.console(0.2)
 
         reply = console.ask(self.packet())
 
@@ -895,8 +901,9 @@ class TestQueueConsole(unittest.TestCase):
         self.assertIsNone(run.pending)
 
     def test_a_decision_nobody_recognizes_aborts(self) -> None:
+        import threading
         console, run = self.console()
-        run.answers.put(("do it anyway", ""))
+        threading.Timer(0.05, lambda: run.answers.put(("do it anyway", ""))).start()
 
         self.assertIs(OperatorDecision.ABORT, console.ask(self.packet()).decision)
 
@@ -952,3 +959,45 @@ class TestApprovalResumeAnchor(unittest.TestCase):
 
     def test_no_url_means_no_anchor(self) -> None:
         self.assertIsNone(self.anchor(Reason.APPROVAL, url=""))
+
+
+class TestWhoAnswersIsPerRun(unittest.TestCase):
+    """Asking to be watched is one invocation's choice, not the server's.
+
+    Tying it to a process flag meant the console could only offer a watched run
+    if somebody had remembered a flag when starting it -- and forgetting it did
+    not disable the feature, it turned every handoff into a failed run. A run
+    says whether anybody is waiting on it, so the same server serves both and
+    there is no flag to forget.
+
+    It only asks to be asked. It cannot approve anything, reach a gate or widen
+    what the run may do; what it displaces is giving up.
+    """
+
+    def invoker(self, *, operator: bool) -> Any:
+        from agent_hands.api import Catalog, Invoker
+        # headed because a handoff needs a window; see TestAHandoffNeedsAWindow.
+        return Invoker(Catalog(root=Path(".")), headed=True, operator=operator)
+
+    def a_run(self, *, watched: bool) -> Any:
+        from agent_hands.api import Run
+        return Run(run_id="r1", capability="c", args={}, watched=watched)
+
+    def console(self, *, operator: bool, watched: bool) -> str:
+        return type(self.invoker(operator=operator)._console(self.a_run(watched=watched))).__name__
+
+    def test_a_run_that_asks_gets_a_person_on_a_server_that_did_not(self) -> None:
+        self.assertEqual("QueueConsole", self.console(operator=False, watched=True))
+
+    def test_a_run_that_does_not_ask_still_gives_up_on_its_own(self) -> None:
+        # The default has to stay the answer an unattended run should give.
+        self.assertEqual("ScriptedConsole", self.console(operator=False, watched=False))
+
+    def test_the_server_flag_still_covers_every_run(self) -> None:
+        # --operator means somebody is watching this whole server, including
+        # callers that are not the console and never asked.
+        self.assertEqual("QueueConsole", self.console(operator=True, watched=False))
+
+    def test_a_recording_has_no_run_to_ask_for_one(self) -> None:
+        self.assertEqual("ScriptedConsole",
+                         type(self.invoker(operator=True)._console(None)).__name__)

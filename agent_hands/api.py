@@ -240,6 +240,10 @@ class Run:
     result: dict[str, Any] | None = None
     error: str | None = None
     done: threading.Event = field(default_factory=threading.Event)
+    # Whether this one invocation asked to be parked on a person rather than
+    # abandoned. Per run, not per server, so the console can offer a watched run
+    # without a second process and without changing anybody else's.
+    watched: bool = False
     # Set while the run is parked on a person, cleared the moment they answer.
     pending: dict[str, Any] | None = None
     answers: "queue.Queue[tuple[str, str]]" = field(default_factory=queue.Queue)
@@ -338,10 +342,11 @@ class Invoker:
             run.done.set()
 
     def start(self, name: str, args: dict[str, Any],
-              confirm: dict[str, Any] | None = None) -> Run:
+              confirm: dict[str, Any] | None = None, *, watched: bool = False) -> Run:
         cap = self.catalog.capabilities[name]
         evidence = Evidence.start(cap.name, root=self.evidence_root, params=args)
-        run = Run(run_id=evidence.dir.name, capability=cap.name, args=args)
+        run = Run(run_id=evidence.dir.name, capability=cap.name, args=args,
+                  watched=watched)
         approver = ApiApprover(self.confirmable, confirm, args_digest(args))
         with self._lock:
             self.runs[run.run_id] = run
@@ -403,13 +408,16 @@ class Invoker:
 
         `OperatorConsole` is a two-method protocol, and everything above it --
         the ownership state machine, the intervention packet, the re-check on
-        resume -- is real, so swapping who answers changes nothing else. With
-        `--operator` that is `QueueConsole`: the run parks and a person answers
-        over HTTP. Without it the answer is the one an unattended run should
-        give: stop, and say a person was needed. Approving automatically would
-        wave through exactly the irreversible steps the gate is for.
+        resume -- is real, so swapping who answers changes nothing else.
+
+        Two ways to get `QueueConsole`, where the run parks and a person answers
+        over HTTP: one invocation asking for it, or `--operator` saying every
+        run on this server may. Neither is the default, because the default has
+        to be the answer an unattended run should give: stop, and say a person
+        was needed. Approving automatically would wave through exactly the
+        irreversible steps the gate is for.
         """
-        if self.operator and run is not None:
+        if run is not None and (self.operator or run.watched):
             return QueueConsole(run)
         return ScriptedConsole(decision=OperatorDecision.ABORT,
                                note="no operator console is attached to the API",
@@ -726,14 +734,18 @@ class _Handler(BaseHTTPRequestHandler):
 
         # Arguments and a deadline. Nothing else is accepted, so the request
         # cannot reach the policy, the entry URL or the steps.
-        unknown = sorted(set(body) - {"args", "wait_seconds", "confirm"})
+        unknown = sorted(set(body) - {"args", "wait_seconds", "confirm", "operator"})
         if unknown:
             return self._send(400, {"error": f"unexpected field(s): {', '.join(unknown)}"})
         args = body.get("args") or {}
         if not isinstance(args, dict):
             return self._send(400, {"error": "args must be an object"})
 
-        run = inv.start(name, args, body.get("confirm"))
+        # "operator" only asks to be asked. It cannot approve anything, reach a
+        # gate or widen what the run may do -- it chooses who answers when the
+        # engine stops, and the alternative it displaces is giving up.
+        run = inv.start(name, args, body.get("confirm"),
+                        watched=bool(body.get("operator")))
         run.done.wait(timeout=float(body.get("wait_seconds", DEFAULT_WAIT_SECONDS)))
         if run.status != "completed":
             return self._send(202, run.to_json())
