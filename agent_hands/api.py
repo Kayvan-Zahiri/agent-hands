@@ -38,6 +38,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .escalation import Decision as OperatorDecision
+from .chat import chips, conversation_from, starters, state_of
 from .escalation import Escalator, InterventionRequest, Response, ScriptedConsole
 from .evidence import DEFAULT_ROOT, Evidence
 from .policy import AppAllowance, Policy
@@ -716,6 +717,9 @@ class _Handler(BaseHTTPRequestHandler):
                 # whether to approve a recording has to read every line of it.
                 return self._send(200, cap.to_json())
             return self._send(200, _projection(cap))
+        if path == "/chat/starters":
+            return self._send(200, {"starters": starters(
+                [_projection(c) for c in inv.catalog.capabilities.values()])})
         if path == "/recordings":
             return self._send(200, {"recordings": _recordings(inv)})
         if path == "/invocations":
@@ -742,7 +746,7 @@ class _Handler(BaseHTTPRequestHandler):
         inv: Invoker = self.server.invoker                   # type: ignore[attr-defined]
         path = urlparse(self.path).path.rstrip("/")
         parts = path.split("/")
-        if path != "/recordings" and not (
+        if path not in ("/recordings", "/chat") and not (
                 len(parts) == 4
                 and ((parts[1] == "capabilities" and parts[3] in ("invocations", "approval"))
                      or (parts[1] == "invocations" and parts[3] == "decision"))):
@@ -776,6 +780,30 @@ class _Handler(BaseHTTPRequestHandler):
             save(cap, Path(inv.catalog.root) / "meridian" / f"{cap.name}.json")
             inv.catalog = Catalog.open(inv.catalog.root)
             return self._send(200, {"approved": True, "capability": cap.name})
+
+        if path == "/chat":
+            # Resolves a sentence to a capability and arguments. It runs
+            # nothing: the browser takes the plan to the ordinary invocation
+            # route, through the same gates as every other caller. Keeping the
+            # two apart is what stops a chat box becoming a way in.
+            try:
+                body = self._body()
+            except ValueError as exc:
+                return self._send(400, {"error": str(exc)})
+            message = body.get("message")
+            if not isinstance(message, str) or not message.strip():
+                return self._send(400, {"error": "message must be a non-empty string"})
+            state = body.get("state")
+            if state is not None and not isinstance(state, dict):
+                return self._send(400, {"error": "state must be an object"})
+            catalog = [_projection(c) for c in inv.catalog.capabilities.values()]
+            talk = conversation_from(state, {"password": "password"})
+            plan = talk.say(message[:400], catalog)
+            return self._send(200, {
+                "action": plan.action, "message": plan.message,
+                "capability": plan.capability, "args": plan.args,
+                "chips": chips(plan), "state": state_of(talk),
+            })
 
         if path == "/recordings":
             try:

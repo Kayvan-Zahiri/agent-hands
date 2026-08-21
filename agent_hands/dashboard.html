@@ -77,6 +77,31 @@
   #desk .banner b { display:block; margin:0 0 3px; }
   #desk .sign { border-top:1px solid #e2e6ec; margin-top:6px; padding-top:12px; }
   #desk .sign summary { cursor:pointer; color:#555; font-size:12px; }
+  #ask { max-width:620px; margin:6px auto 0; }
+  #ask h2 { border:0; padding:0; margin:0 0 3px; font-size:20px; color:#000; }
+  #ask .sub { color:#555; margin:0 0 14px; }
+  #ask .tape { border:1px solid #003366; background:#fff; padding:14px 16px;
+    min-height:300px; max-height:52vh; overflow:auto; }
+  #ask .t { margin:0 0 13px; }
+  #ask .t .who { display:inline-block; width:44px; color:#777; font-size:11px;
+    vertical-align:top; text-transform:uppercase; letter-spacing:.05em; }
+  #ask .t .said { display:inline-block; width:calc(100% - 52px); }
+  #ask .t.you .said { font-weight:bold; }
+  #ask .t.run .said { font-family:Menlo,Consolas,monospace; font-size:12px; color:#555; }
+  #ask .box { border:1px solid #c9d4e2; background:#f7f9fc; padding:9px 12px; margin:2px 0 0; }
+  #ask .box .k { color:#777; font-size:11px; }
+  #ask .chips { margin:10px 0 0; }
+  #ask .chip { font:inherit; font-size:13px; padding:5px 11px; margin:0 6px 6px 0;
+    background:#eef2f7; border:1px solid #7f9db9; cursor:pointer; }
+  #ask .chip:hover { background:#003366; color:#fff; }
+  #ask .chip.go { background:#003366; color:#fff; font-weight:bold; }
+  #ask .say { display:flex; gap:8px; margin:12px 0 0; }
+  #ask .say input { flex:1; font:inherit; font-size:15px; padding:8px 9px;
+    border:1px solid #7f9db9; }
+  #ask .say button { font:inherit; font-size:15px; padding:8px 18px;
+    background:#003366; color:#fff; border:1px solid #003366; cursor:pointer; }
+  #ask .starters { margin:14px 0 0; }
+  #ask .starters .k { color:#777; font-size:11px; display:block; margin:0 0 6px; }
   #desk .live { font-family:Menlo,Consolas,monospace; font-size:12px; color:#333;
     background:#f7f8fa; border:1px solid #e2e6ec; padding:10px 12px; margin-top:14px;
     max-height:190px; overflow:auto; }
@@ -94,6 +119,7 @@
     <button data-tab="artifact">Artifact</button>
     <button data-tab="runs">Runs</button>
     <button data-tab="service">Service Desk</button>
+    <button data-tab="ask">Ask</button>
   </div>
   <div id="body"></div>
 </div>
@@ -130,7 +156,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.da
 function go(tab) {
   document.querySelectorAll('#tabs button').forEach(b =>
     b.setAttribute('aria-current', b.dataset.tab === tab));
-  ({about, jobs, operator, artifact, runs, service})[tab]();
+  ({about, jobs, operator, artifact, runs, service, ask})[tab]();
 }
 
 /* ------------------------------ how it works ------------------------------ */
@@ -413,6 +439,196 @@ function packet(runId, p) {
   const left = Math.max(0, Math.round(p.raised_at + DEADLINE - Date.now() / 1000));
   if ($('#left')) $('#left').textContent =
     left ? `gives up on its own in ${left}s` : 'giving up…';
+}
+
+/* ---------------------------------- ask ---------------------------------- */
+/* The same jobs, asked for in a sentence instead of picked off a list.
+   Everything offered as a chip is real input: clicking one sends exactly the
+   text on it, and the turn resolves the same way as if it had been typed. The
+   point of the chips is that a demo should not depend on typing accurately in
+   front of people, not that the conversation is staged.
+
+   Nothing here decides anything. `POST /chat` resolves a sentence to a
+   capability and arguments and runs nothing; this page then takes that plan to
+   the ordinary invocation route, through the same gates as every other caller.
+
+   Its own state and its own ids, so the tabs above are untouched. */
+let askState = null, askBusy = false, askStarters = [];
+
+function ask() {
+  $('#body').innerHTML = `<div id="ask">
+    <h2>Ask for it</h2>
+    <p class="sub">Say what you need. It works out which job that is, asks for
+      anything missing, and reads the answer back.</p>
+    <div class="tape" id="tape"><div class="t"><span class="who">bot</span
+      ><span class="said">What do you need?</span></div></div>
+    <div class="chips" id="chips"></div>
+    <div class="say">
+      <input id="saybox" placeholder="type it, or click one below"
+        autocomplete="off">
+      <button id="saygo">Send</button>
+    </div>
+    <div class="starters" id="starters"></div>
+  </div>`;
+  $('#saygo').onclick = () => askSay($('#saybox').value);
+  $('#saybox').onkeydown = e => { if (e.key === 'Enter') askSay($('#saybox').value); };
+  askShowStarters();
+}
+
+async function askShowStarters() {
+  if (!askStarters.length)
+    askStarters = (await j('/chat/starters').catch(() => ({}))).starters || [];
+  if (!$('#starters')) return;
+  $('#starters').innerHTML = `<span class="k">Try one</span>` +
+    askStarters.map(t => `<button class="chip">${esc(t)}</button>`).join('');
+  $('#starters').querySelectorAll('.chip').forEach(
+    b => b.onclick = () => askSay(b.textContent));
+}
+
+function askLine(who, said, cls) {
+  if (!$('#tape')) return;
+  $('#tape').insertAdjacentHTML('beforeend',
+    `<div class="t ${cls || who}"><span class="who">${esc(who)}</span
+      ><span class="said">${said}</span></div>`);
+  $('#tape').scrollTop = $('#tape').scrollHeight;
+}
+
+function askChips(list, go) {
+  if (!$('#chips')) return;
+  $('#chips').innerHTML = (list || []).map(
+    t => `<button class="chip${go && t === 'yes' ? ' go' : ''}">${esc(t)}</button>`).join('');
+  $('#chips').querySelectorAll('.chip').forEach(
+    b => b.onclick = () => askSay(b.textContent));
+}
+
+async function askSay(text) {
+  text = (text || '').trim();
+  if (!text || askBusy) return;
+  askBusy = true;
+  if ($('#saybox')) $('#saybox').value = '';
+  askChips([]);
+  askLine('you', esc(text));
+
+  let r;
+  try {
+    r = await j('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ message: text, state: askState }) });
+  } catch (e) { askBusy = false; return askLine('bot', 'I could not reach the service.'); }
+  if (r.error) { askBusy = false; return askLine('bot', esc(r.error)); }
+  askState = r.state;
+
+  if (r.action === 'puzzled' || r.action === 'ask') {
+    askLine('bot', esc(r.message));
+    askChips(r.chips);
+    askBusy = false;
+    return;
+  }
+  if (r.action === 'confirm') {
+    const shown = Object.entries(r.args).filter(([k]) =>
+      !['operator', 'password', 'branch'].includes(k));
+    askLine('bot', `Before I do it &mdash; this changes records and cannot be undone.
+      <div class="box">${shown.map(([k, v]) =>
+        `<span class="k">${esc(DESK_CAP[k] || k.replace(/_/g, ' '))}</span> <b>${esc(v)}</b>`
+      ).join('<br>')}</div>`);
+    askChips(['yes', 'no'], true);
+    askBusy = false;
+    return;
+  }
+  await askRun(r.capability, r.args);
+  askBusy = false;
+}
+
+/* The plan goes to the ordinary invocation route. Same gates, same evidence. */
+async function askRun(capId, args) {
+  const cap = caps.find(c => c.id === capId);
+  askLine('bot', 'Working&hellip;');
+  const body = { args, wait_seconds: 0, operator: true };
+  if (cap && cap.irreversible)
+    body.confirm = { capability: capId, args_digest: await digest(args) };
+  let started;
+  try {
+    started = await j(`/capabilities/${encodeURIComponent(capId)}/invocations`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body) });
+  } catch (e) { return askLine('bot', 'I could not start that.'); }
+  if (started.error) return askLine('bot', esc(started.error));
+
+  // Three reads in a row all say "Reading the answer", which is true and says
+  // nothing. One line per thing that changed.
+  const seen = new Set();
+  let lastLine = '';
+  for (;;) {
+    await sleep(700);
+    if (!$('#tape')) return;
+    const run = await j(`/invocations/${started.run_id}`).catch(() => null);
+    if (!run) continue;
+    if (run.status === 'awaiting_operator' && run.pending) {
+      askLine('bot', `<b>${esc(DESK_WHY[run.pending.reason] || DESK_WHY._)}</b>
+        Nothing has been changed yet.`);
+      askChips(['approve', 'cancel'], true);
+      askAwait(started.run_id);
+      return;
+    }
+    const ev = await j(`/invocations/${started.run_id}/events`).catch(() => null);
+    if (ev) for (const e of ev.events.filter(x => x.event === 'step')) {
+      const line = deskLine(e);
+      if (!line || seen.has(e.index)) continue;
+      seen.add(e.index);
+      if (line === lastLine) continue;
+      lastLine = line;
+      askLine('', esc(line), 'run');
+    }
+    if (run.status === 'completed') return askDone(run);
+  }
+}
+
+function askAwait(runId) {
+  askChips([]);
+  $('#chips').innerHTML =
+    `<button class="chip go">Approve</button><button class="chip">Cancel</button>`;
+  const bs = $('#chips').querySelectorAll('.chip');
+  const answer = d => {
+    askChips([]);
+    askLine('you', d === 'resume' ? 'approve' : 'cancel');
+    j(`/invocations/${runId}/decision`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: d, note: 'answered in the chat' }) })
+      .then(() => askFollow(runId));
+  };
+  bs[0].onclick = () => answer('resume');
+  bs[1].onclick = () => answer('abort');
+}
+
+async function askFollow(runId) {
+  for (;;) {
+    await sleep(700);
+    if (!$('#tape')) return;
+    const run = await j(`/invocations/${runId}`).catch(() => null);
+    if (run && run.status === 'completed') return askDone(run);
+  }
+}
+
+/* The three endings, kept apart. */
+function askDone(run) {
+  const res = run.result || {};
+  const outs = Object.entries(res.outputs || {});
+  if (res.outcome === 'success') {
+    askLine('bot', outs.length
+      ? `Done.<div class="box">${outs.map(([k, v]) =>
+          `<span class="k">${esc(OUT[k] || k.replace(/_/g, ' '))}</span> <b>${esc(v)}</b>`
+        ).join('<br>')}</div>`
+      : 'Done. MERIDIAN accepted it.');
+  } else if (res.outcome === 'business_outcome') {
+    askLine('bot', `MERIDIAN says: <b>${esc(res.message || 'the request was declined')}</b>.
+      That is its answer, not a fault, and nothing was changed.`);
+  } else {
+    const signon = /OPERATOR SIGN ON|NOT SIGNED ON/i.test(res.observed || '');
+    askLine('bot', signon
+      ? 'Those sign-on details were not accepted. Nothing was changed.'
+      : `I could not finish that, and nothing was changed.
+         <span class="dim">${esc(res.message || run.error || '')}</span>`);
+  }
+  askShowStarters();
 }
 
 /* ------------------------------ service desk ------------------------------ */
