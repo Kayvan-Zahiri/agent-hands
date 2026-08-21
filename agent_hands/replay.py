@@ -268,12 +268,61 @@ CONDITIONS: tuple[Condition, ...] = (
 _DISMISS = ("Continue", "OK", "Acknowledge", "Close", "Proceed")
 
 
+@dataclass(frozen=True)
+class AppProfile:
+    """The wording one application uses for the states the engine recognizes.
+
+    `BusinessRule` already lives in the artifact, on the argument that which
+    screens mean what is a fact about one application and a shared engine that
+    hard-codes one tenant's error strings is wrong for the next tenant. The same
+    argument applies to conditions, and for a long time this module ignored it:
+    the table was a module constant that looked for "session has expired", so
+    against a target that says "your session has timed out" two of its six
+    exceptional states were dead code.
+
+    Conditions live here rather than in the artifact because they belong to the
+    application, not to one recorded flow. Every capability against a given app
+    shares them, and duplicating them into each artifact would mean fixing a
+    wrong string in twenty files.
+    """
+
+    conditions: tuple[Condition, ...] = CONDITIONS
+    dismiss: tuple[str, ...] = _DISMISS
+
+    def condition(self, text: str) -> Condition | None:
+        low = text.lower()
+        for rule in self.conditions:
+            if rule.when_text in low:
+                return rule
+        return None
+
+
+DEFAULT_PROFILE = AppProfile()
+
+# Keyed by the artifact's `app_id`. Adding a target means adding an entry, not
+# editing the engine, which is the difference between adapting by configuration
+# and editing the engine for the second customer.
+PROFILES: dict[str, AppProfile] = {
+    "meridian-core": AppProfile(conditions=(
+        Condition("session_expired", "your session has timed out", "recoverable", "reenter"),
+        Condition("interstitial", "scheduled maintenance", "recoverable", "dismiss"),
+        Condition("app_error", "an unexpected error occurred", "failure", "stop",
+                  "the record this flow was recorded against"),
+    )),
+    # Note what is deliberately absent. This target refuses a teller a
+    # supervisor-only action with "SUPERVISOR OVERRIDE REQUIRED", and that is
+    # the application answering rather than faulting -- so it belongs in the
+    # artifact as a BusinessRule, where it comes back as a business outcome the
+    # caller can act on. Adding it here would make it a hard failure and lose
+    # the distinction. Conditions are for states the engine can do something
+    # about: retry, re-enter, dismiss. "Not you" is not one of those.
+}
+
+
 def _condition(text: str) -> Condition | None:
-    low = text.lower()
-    for rule in CONDITIONS:
-        if rule.when_text in low:
-            return rule
-    return None
+    """Module-level lookup against the default profile, kept for callers that
+    have no capability in hand."""
+    return DEFAULT_PROFILE.condition(text)
 
 
 def _match_business(cap: Capability, text: str) -> BusinessRule | None:
@@ -378,11 +427,16 @@ class Replay:
         *,
         evidence: Any = None,
         escalator: Escalator | None = None,
+        profile: AppProfile | None = None,
     ) -> None:
         self.page = page
         self.policy = policy
         self.evidence = evidence
         self.escalator = escalator
+        # An explicit profile overrides the registry; without one the artifact's
+        # app_id selects it, so a caller usually says nothing.
+        self.profile = profile
+        self._profile = profile or DEFAULT_PROFILE
         self._begin()
 
     def _begin(self) -> None:
@@ -411,6 +465,7 @@ class Replay:
         is touched, so a malformed call cannot leave a half-finished flow behind.
         """
         self._begin()
+        self._profile = self.profile or PROFILES.get(cap.app_id, DEFAULT_PROFILE)
         bound = bind_params(cap, dict(params or {}))
         cap = _bind_targets(cap, bound)
         entry = substitute(cap.entry_url, bound, "entry_url") or cap.entry_url
@@ -562,7 +617,7 @@ class Replay:
         """
         frame = frame_for(self.page, step)
         if step.checkpoint is not None:
-            needles = [c.when_text for c in CONDITIONS]
+            needles = [c.when_text for c in self._profile.conditions]
             needles += [b.when_text for b in cap.business_rules]
             if step.checkpoint.kind == "text_present":
                 needles.append(step.checkpoint.value)
@@ -579,7 +634,7 @@ class Replay:
         # caught, and anything still rendering is caught by the next step.
         text = frame_text(frame)
 
-        condition = _condition(text)
+        condition = self._profile.condition(text)
         if condition is not None:
             self._event("condition", index=step.index, code=condition.code,
                         verdict=condition.kind, tactic=condition.tactic)
@@ -809,7 +864,7 @@ class Replay:
         cannot find as the fault -- sending someone to fix a control that was
         never broken.
         """
-        for wanted in _DISMISS:
+        for wanted in self._profile.dismiss:
             for role in ("link", "button"):
                 try:
                     control = frame.get_by_role(role, name=wanted, exact=True)
@@ -1061,6 +1116,7 @@ def _expected(step: Step) -> str:
 
 __all__ = [
     "Replay", "replay", "ParamError", "Condition", "CONDITIONS",
+    "AppProfile", "PROFILES", "DEFAULT_PROFILE",
     "bind_params", "substitute", "verify", "frame_for", "frame_text", "page_text",
     "STEP_TIMEOUT_MS", "SLOW_TIMEOUT_MS", "MAX_ATTEMPTS", "MAX_REENTRIES",
     "MAX_SESSION_RECOVERIES", "MAX_RESUMES",
